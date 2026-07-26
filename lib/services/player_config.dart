@@ -49,7 +49,10 @@ Future<void> configurePlayerFor(
 Future<Media> buildMedia(String package, AnimeWatch watch) async {
   final headers = watch.headers.isEmpty ? null : watch.headers;
   final isHls = watch.type == 'hls' || watch.url.contains('.m3u8');
-  if (!isHls) return Media(watch.url, httpHeaders: headers);
+  // A downloaded episode is already a local playlist with its segments beside
+  // it, so there is nothing to fetch or rewrite.
+  final isLocal = !watch.url.startsWith('http');
+  if (!isHls || isLocal) return Media(watch.url, httpHeaders: headers);
 
   try {
     final dio = watch.netMode == null

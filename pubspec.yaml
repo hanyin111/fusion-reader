@@ -48,6 +48,7 @@ dependencies:
   archive: ^4.0.0
   fast_gbk: ^1.0.0
   xml: ^7.0.1
+  scrollable_positioned_list: ^0.3.8
 
 dev_dependencies:
   flutter_test:

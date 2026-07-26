@@ -44,7 +44,7 @@ class _NovelReaderPageState extends State<NovelReaderPage> {
       _error = null;
     });
     try {
-      final raw = await Sources.watch(widget.item, _episode.url);
+      final raw = await Sources.watchCached(widget.item, _episode.url);
       if (!mounted) return;
       setState(() => _watch = NovelWatch.fromJson(raw));
       await Storage.saveHistory(HistoryRecord(

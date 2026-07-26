@@ -32,6 +32,10 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   String? _error;
   bool _loading = true;
 
+  static const _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 3.0];
+  double _rate =
+      (Storage.setting('playbackRate', defaultValue: 1.0) as num).toDouble();
+
   MediaEpisode get _episode => widget.group.urls[_index];
 
   @override
@@ -52,12 +56,14 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _error = null;
     });
     try {
-      final raw = await Sources.watch(widget.item, _episode.url);
+      final raw = await Sources.watchCached(widget.item, _episode.url);
       final watch = AnimeWatch.fromJson(raw);
       if (!mounted) return;
 
       await configurePlayerFor(_player, widget.item.package, watch);
       await _player.open(await buildMedia(widget.item.package, watch));
+      // open() resets the rate, so re-apply the chosen speed each episode.
+      await _player.setRate(_rate);
       await Storage.saveHistory(HistoryRecord(
         key: widget.item.key,
         episodeUrl: _episode.url,
@@ -74,6 +80,16 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         _error = e.toString();
       });
     }
+  }
+
+  /// Trim "1.50" down to "1.5" but keep "1.25" intact.
+  static String _label(double rate) =>
+      rate.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+
+  Future<void> _setRate(double rate) async {
+    setState(() => _rate = rate);
+    await _player.setRate(rate);
+    await Storage.setSetting('playbackRate', rate);
   }
 
   void _go(int delta) {
@@ -93,6 +109,38 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         title: Text('${widget.item.title} · ${_episode.name}',
             maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          PopupMenuButton<double>(
+            tooltip: '播放速度',
+            initialValue: _rate,
+            onSelected: _setRate,
+            itemBuilder: (context) => [
+              for (final rate in _rates)
+                PopupMenuItem(
+                  value: rate,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        rate == _rate ? Icons.check : null,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(rate == 1.0 ? '正常' : '${_label(rate)}x'),
+                    ],
+                  ),
+                ),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Center(
+                child: Text(
+                  '${_label(_rate)}x',
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
+          ),
           IconButton(
             tooltip: '上一集',
             icon: const Icon(Icons.skip_previous),

@@ -1,6 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/models.dart';
+import 'offline_cache.dart';
 
 /// Thin wrapper around Hive boxes. Pure Dart storage, works on every platform.
 class Storage {
@@ -21,6 +22,7 @@ class Storage {
     _extSettings = await Hive.openBox('extension_settings');
     _disabled = await Hive.openBox('extensions_disabled');
     _local = await Hive.openBox('local_library');
+    await OfflineCache.init(await Hive.openBox('offline_manifests'));
   }
 
   // ---- local library ----

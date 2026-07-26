@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/models.dart';
+import '../services/local_library.dart';
+import '../services/offline_cache.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
 import '../widgets/media_card.dart';
@@ -65,6 +67,100 @@ class _DetailPageState extends State<DetailPage> {
             item: item, group: group, groupIndex: _groupIndex, index: episodeIndex);
     }
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  }
+
+  /// Per-episode cache control: download, show progress, or drop the copy.
+  Widget _cacheButton(MediaEpisode ep) {
+    // Locally imported media is already on disk — caching it would duplicate it.
+    if (LocalLibrary.isLocal(widget.item.package)) return const SizedBox.shrink();
+
+    return ListenableBuilder(
+      listenable: OfflineCache.instance,
+      builder: (context, _) {
+        final key = OfflineCache.keyOf(widget.item.package, ep.url);
+        final progress = OfflineCache.instance.progressOf(key);
+
+        if (progress != null) {
+          return IconButton(
+            tooltip: '${progress.label}  ${(progress.fraction * 100).round()}% · 点击取消',
+            icon: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                value: progress.fraction == 0 ? null : progress.fraction,
+              ),
+            ),
+            onPressed: () => OfflineCache.instance.cancel(key),
+          );
+        }
+
+        if (OfflineCache.has(widget.item.package, ep.url)) {
+          return IconButton(
+            tooltip: '已缓存，点击删除',
+            icon: Icon(Icons.download_done,
+                size: 20, color: Theme.of(context).colorScheme.primary),
+            onPressed: () => OfflineCache.remove(widget.item.package, ep.url),
+          );
+        }
+
+        return IconButton(
+          tooltip: '缓存到本地',
+          icon: const Icon(Icons.download_outlined, size: 20),
+          onPressed: () async {
+            try {
+              await OfflineCache.instance.download(widget.item, ep);
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text('缓存失败: $e')));
+              }
+            }
+          },
+        );
+      },
+    );
+  }
+
+  /// Queue every episode in the current group, skipping cached ones.
+  Future<void> _cacheAll(MediaEpisodeGroup group) async {
+    final pending = group.urls
+        .where((e) => !OfflineCache.has(widget.item.package, e.url))
+        .toList();
+    if (pending.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('本组内容都已缓存')));
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('缓存全部'),
+        content: Text('将缓存 ${pending.length} 项内容，可能占用较多空间和流量。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, true), child: const Text('开始')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    var failed = 0;
+    for (final ep in pending) {
+      if (!mounted) return;
+      try {
+        await OfflineCache.instance.download(widget.item, ep);
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(failed == 0
+              ? '已缓存 ${pending.length} 项'
+              : '完成，${pending.length - failed} 项成功，$failed 项失败')));
+    }
   }
 
   @override
@@ -207,6 +303,12 @@ class _DetailPageState extends State<DetailPage> {
                 Text('共 ${group?.urls.length ?? 0} 个章节/剧集',
                     style: Theme.of(context).textTheme.titleMedium),
                 const Spacer(),
+                if (group != null && !LocalLibrary.isLocal(widget.item.package))
+                  TextButton.icon(
+                    icon: const Icon(Icons.download_for_offline_outlined, size: 18),
+                    label: const Text('缓存全部'),
+                    onPressed: () => _cacheAll(group),
+                  ),
                 if (detail.episodes.length > 1)
                   DropdownButton<int>(
                     value: _groupIndex,
@@ -242,6 +344,7 @@ class _DetailPageState extends State<DetailPage> {
                         fontWeight: isLast ? FontWeight.bold : null,
                       )),
                   leading: isLast ? const Icon(Icons.bookmark, size: 18) : null,
+                  trailing: _cacheButton(ep),
                   onTap: () => _openEpisode(i),
                 );
               },

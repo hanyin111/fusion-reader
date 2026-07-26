@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../models/models.dart';
 import '../services/sources.dart';
@@ -30,41 +33,102 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   bool _webtoon = Storage.setting('mangaWebtoon', defaultValue: false) as bool;
   bool _showBar = true;
   int _page = 0;
-  late PageController _pageCtrl;
+
+  PageController? _pageCtrl;
+
+  // Webtoon strips are variable-height and load lazily, so an offset-based
+  // ListView cannot restore a position: the images below have not been sized
+  // yet and the scroll collapses back to the top. Addressing pages by index
+  // instead keeps the restore stable no matter when the images arrive.
+  final ItemScrollController _itemCtrl = ItemScrollController();
+  final ItemPositionsListener _itemPositions = ItemPositionsListener.create();
+
+  Timer? _saveDebounce;
 
   MediaEpisode get _episode => widget.group.urls[_index];
 
   @override
   void initState() {
     super.initState();
-    _pageCtrl = PageController();
-    _load();
+    _itemPositions.itemPositions.addListener(_onScroll);
+    _load(restore: true);
   }
 
   @override
   void dispose() {
-    _pageCtrl.dispose();
+    _saveDebounce?.cancel();
+    _itemPositions.itemPositions.removeListener(_onScroll);
+    // Persist wherever the reader stopped, without waiting for the debounce.
+    // Only once the chapter actually loaded: backing out of a still-loading
+    // chapter would otherwise write page 0 over a real saved position.
+    if (_watch != null) _persist(_page);
+    _pageCtrl?.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  void _onScroll() {
+    final positions = _itemPositions.itemPositions.value;
+    if (positions.isEmpty) return;
+    // The topmost item that is still at least partly on screen.
+    final first = positions
+        .where((p) => p.itemTrailingEdge > 0)
+        .fold<int?>(null, (min, p) => min == null || p.index < min ? p.index : min);
+    if (first != null && first != _page) {
+      setState(() => _page = first);
+      _scheduleSave(first);
+    }
+  }
+
+  void _scheduleSave(int page) {
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 600), () => _persist(page));
+  }
+
+  void _persist(int page) {
+    Storage.saveHistory(HistoryRecord(
+      key: widget.item.key,
+      episodeUrl: _episode.url,
+      episodeName: _episode.name,
+      groupIndex: widget.groupIndex,
+      episodeIndex: _index,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+      position: page,
+    ));
+  }
+
+  Future<void> _load({bool restore = false}) async {
+    // Only the episode the reader was opened at resumes mid-chapter; moving to
+    // another chapter starts it from the beginning.
+    var startPage = 0;
+    if (restore) {
+      final history = Storage.historyOf(widget.item.key);
+      if (history != null &&
+          history.groupIndex == widget.groupIndex &&
+          history.episodeIndex == _index) {
+        startPage = history.position;
+      }
+    }
+
     setState(() {
       _watch = null;
       _error = null;
-      _page = 0;
+      _page = startPage;
     });
+
     try {
-      final raw = await Sources.watch(widget.item, _episode.url);
+      final raw = await Sources.watchCached(widget.item, _episode.url);
       if (!mounted) return;
-      setState(() => _watch = MangaWatch.fromJson(raw));
-      await Storage.saveHistory(HistoryRecord(
-        key: widget.item.key,
-        episodeUrl: _episode.url,
-        episodeName: _episode.name,
-        groupIndex: widget.groupIndex,
-        episodeIndex: _index,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-      ));
+      final watch = MangaWatch.fromJson(raw);
+      final page = startPage.clamp(0, watch.urls.isEmpty ? 0 : watch.urls.length - 1);
+      setState(() {
+        _watch = watch;
+        _page = page;
+        // Build the controller with the resume page baked in so paged mode
+        // never renders page one first.
+        _pageCtrl?.dispose();
+        _pageCtrl = PageController(initialPage: page);
+      });
+      _persist(page);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
@@ -74,8 +138,19 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   void _go(int delta) {
     final next = _index + delta;
     if (next < 0 || next >= widget.group.urls.length) return;
+    _saveDebounce?.cancel();
     setState(() => _index = next);
     _load();
+  }
+
+  void _jumpTo(int page) {
+    setState(() => _page = page);
+    if (_webtoon) {
+      if (_itemCtrl.isAttached) _itemCtrl.jumpTo(index: page);
+    } else {
+      _pageCtrl?.jumpToPage(page);
+    }
+    _scheduleSave(page);
   }
 
   @override
@@ -131,7 +206,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     return PageView.builder(
       controller: _pageCtrl,
       itemCount: watch.urls.length,
-      onPageChanged: (i) => setState(() => _page = i),
+      onPageChanged: (i) {
+        setState(() => _page = i);
+        _scheduleSave(i);
+      },
       itemBuilder: (context, i) => InteractiveViewer(
         maxScale: 5,
         child: _image(watch.urls[i], watch),
@@ -140,8 +218,11 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   }
 
   Widget _buildWebtoon(MangaWatch watch) {
-    return ListView.builder(
+    return ScrollablePositionedList.builder(
       itemCount: watch.urls.length,
+      itemScrollController: _itemCtrl,
+      itemPositionsListener: _itemPositions,
+      initialScrollIndex: _page,
       itemBuilder: (context, i) => _image(watch.urls[i], watch, fit: BoxFit.fitWidth),
     );
   }
@@ -174,8 +255,19 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                 icon: Icon(_webtoon ? Icons.auto_stories : Icons.view_day,
                     color: Colors.white),
                 onPressed: () {
-                  setState(() => _webtoon = !_webtoon);
+                  // Carry the current page across the mode switch.
+                  final page = _page;
+                  setState(() {
+                    _webtoon = !_webtoon;
+                    _pageCtrl?.dispose();
+                    _pageCtrl = PageController(initialPage: page);
+                  });
                   Storage.setSetting('mangaWebtoon', _webtoon);
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (_webtoon && _itemCtrl.isAttached) {
+                      _itemCtrl.jumpTo(index: page);
+                    }
+                  });
                 },
               ),
             ],
@@ -202,20 +294,21 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                 onPressed: _index > 0 ? () => _go(-1) : null,
               ),
               Expanded(
-                child: _webtoon
+                child: watch.urls.length < 2
                     ? const SizedBox()
                     : Slider(
-                        value: (_page + 1).toDouble().clamp(1, watch.urls.length.toDouble()),
+                        value: (_page + 1)
+                            .toDouble()
+                            .clamp(1, watch.urls.length.toDouble()),
                         min: 1,
                         max: watch.urls.length.toDouble(),
-                        divisions: watch.urls.length > 1 ? watch.urls.length - 1 : 1,
+                        divisions: watch.urls.length - 1,
                         label: '${_page + 1}/${watch.urls.length}',
-                        onChanged: (v) => _pageCtrl.jumpToPage(v.toInt() - 1),
+                        onChanged: (v) => _jumpTo(v.toInt() - 1),
                       ),
               ),
-              if (!_webtoon)
-                Text('${_page + 1}/${watch.urls.length}',
-                    style: const TextStyle(color: Colors.white)),
+              Text('${_page + 1}/${watch.urls.length}',
+                  style: const TextStyle(color: Colors.white)),
               IconButton(
                 tooltip: '下一章',
                 icon: const Icon(Icons.skip_next, color: Colors.white),

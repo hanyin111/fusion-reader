@@ -327,6 +327,10 @@ class HistoryRecord {
   final int episodeIndex;
   final int timestamp;
 
+  /// Position *within* the episode: page index for comics, paragraph index for
+  /// novels, playback milliseconds for video.
+  final int position;
+
   const HistoryRecord({
     required this.key,
     required this.episodeUrl,
@@ -334,7 +338,18 @@ class HistoryRecord {
     required this.groupIndex,
     required this.episodeIndex,
     required this.timestamp,
+    this.position = 0,
   });
+
+  HistoryRecord copyWith({int? position, int? timestamp}) => HistoryRecord(
+        key: key,
+        episodeUrl: episodeUrl,
+        episodeName: episodeName,
+        groupIndex: groupIndex,
+        episodeIndex: episodeIndex,
+        timestamp: timestamp ?? this.timestamp,
+        position: position ?? this.position,
+      );
 
   Map<String, dynamic> toJson() => {
         'key': key,
@@ -343,6 +358,7 @@ class HistoryRecord {
         'groupIndex': groupIndex,
         'episodeIndex': episodeIndex,
         'timestamp': timestamp,
+        'position': position,
       };
 
   factory HistoryRecord.fromJson(Map json) => HistoryRecord(
@@ -352,5 +368,6 @@ class HistoryRecord {
         groupIndex: json['groupIndex'] ?? 0,
         episodeIndex: json['episodeIndex'] ?? 0,
         timestamp: json['timestamp'] ?? 0,
+        position: json['position'] ?? 0,
       );
 }
