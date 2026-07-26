@@ -85,9 +85,51 @@ export default class extends Extension {
     return page <= 1 ? `${base}/` : `${base}/${page}.html`;
   }
 
-  async latest(page) {
+  async channels() {
+    return [
+      { title: '最新更新', key: '' },
+      // Doubles as a login probe: it works only with a live session cookie.
+      { title: '我的收藏', key: 'favorites' },
+    ];
+  }
+
+  async latest(page, channel) {
+    if (channel === 'favorites') return this.favorites(page);
     const html = await this.request(this.pagePath('/list-1', page));
     return this.parseCards(html);
+  }
+
+  async favorites(page) {
+    const email = await this.getSetting('email');
+    if (!email) {
+      throw new Error('「我的收藏」需要登入。請在「扩展」頁點本源的設定按鈕填入 ESJ 帳號密碼。');
+    }
+    await this.ensureLogin(page <= 1); // page 1 re-authenticates; later pages reuse the session
+    const html = await this.request(this.pagePath('/my/favorite', page), {
+      allowErrorStatus: true,
+    });
+    // The member area bounces guests via a script redirect, not a 302. If we
+    // still land there after ensureLogin() reported success, the login cookie
+    // was not kept — which is exactly what this channel exists to expose.
+    if (/window\.location\.href='\/my\/login'/.test(html)) {
+      throw new Error('登入請求已通過，但站點未保留登入狀態（Cookie 未生效）。');
+    }
+    const cards = await this.parseCards(html);
+    if (cards.length) return cards;
+    // Member pages have gone through several layouts; fall back to scanning
+    // every novel link on the page rather than assuming the card markup.
+    const links = await this.querySelectorAll(html, 'a');
+    const out = [];
+    const seen = new Set();
+    for (const link of links) {
+      const href = await link.getAttributeText('href');
+      if (!href || !/\/detail\/\d+\.html/.test(href) || seen.has(href)) continue;
+      const title = (await link.text).trim();
+      if (!title) continue;
+      seen.add(href);
+      out.push({ title, url: href, cover: '' });
+    }
+    return out;
   }
 
   async search(kw, page) {
