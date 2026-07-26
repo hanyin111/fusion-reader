@@ -219,6 +219,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
 
   Widget _buildWebtoon(MangaWatch watch) {
     return ScrollablePositionedList.builder(
+      // Keyed per chapter so PageStorage cannot carry the previous chapter's
+      // scroll offset into this one.
+      key: ValueKey('webtoon|${_episode.url}'),
       itemCount: watch.urls.length,
       itemScrollController: _itemCtrl,
       itemPositionsListener: _itemPositions,

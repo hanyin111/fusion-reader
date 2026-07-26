@@ -249,11 +249,14 @@ class _NovelReaderPageState extends State<NovelReaderPage> {
       itemScrollController: _itemCtrl,
       itemPositionsListener: _itemPositions,
       initialScrollIndex: _block,
-      // A key tied to the typography forces the list to rebuild from the
-      // current index when settings change, instead of keeping stale extents.
-      key: ValueKey('${_settings.fontSize}|${_settings.lineHeight}|'
-          '${_settings.fontName}|${_settings.letterSpacing}|'
-          '${_settings.paragraphSpacing}|${_settings.horizontalPadding}'),
+      // The key must identify the chapter as well as the typography. Keeping
+      // one key across chapters lets PageStorage restore the previous
+      // chapter's scroll offset, so the next chapter opens at the bottom
+      // instead of at its start.
+      key: ValueKey('${_episode.url}|${_settings.fontSize}|'
+          '${_settings.lineHeight}|${_settings.fontName}|'
+          '${_settings.letterSpacing}|${_settings.paragraphSpacing}|'
+          '${_settings.horizontalPadding}'),
       padding: EdgeInsets.symmetric(
         horizontal: _settings.horizontalPadding,
         vertical: _settings.verticalPadding,
