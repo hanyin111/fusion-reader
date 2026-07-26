@@ -1,4 +1,6 @@
-name: Build all platforms
+# Windows and Android are built locally and attached to releases by hand, so
+# CI only covers the platforms that cannot be built on the dev machine.
+name: Build Linux / macOS / iOS
 
 on:
   workflow_dispatch:
@@ -12,47 +14,6 @@ env:
   FLUTTER_VERSION: '3.44.2'
 
 jobs:
-  android:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - run: flutter build apk --release --split-per-abi
-      - run: flutter build appbundle --release
-      - uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: |
-            build/app/outputs/flutter-apk/*.apk
-            build/app/outputs/bundle/release/*.aab
-
-  windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - run: flutter build windows --release
-      - name: Zip release
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath FusionReader-windows-x64.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-x64
-          path: FusionReader-windows-x64.zip
-
   linux:
     runs-on: ubuntu-latest
     steps:
