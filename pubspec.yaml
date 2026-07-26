@@ -1,0 +1,77 @@
+name: fusion_reader
+description: "FusionReader (聚阅) — manga / novel / anime aggregate reader with Miru-compatible JS extensions."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # JS extension engine (QuickJS on desktop/mobile)
+  flutter_js: ^0.8.4
+
+  # Networking
+  dio: ^5.7.0
+  dio_cookie_manager: ^3.1.1
+  cookie_jar: ^4.0.8
+
+  # HTML / XPath parsing bridged to extensions
+  html: ^0.15.4
+  xpath_selector_html_parser: ^3.0.1
+
+  # Storage (pure Dart, works on every platform)
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  path_provider: ^2.1.4
+
+  # Video playback (Windows/Linux/macOS/Android/iOS)
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5
+
+  # UI
+  cached_network_image: ^3.4.1
+  flutter_cache_manager: ^3.4.0
+
+  # Image descrambling + signed source APIs
+  image: ^4.8.0
+  crypto: ^3.0.7
+
+  # Local library import
+  file_picker: ^8.1.4
+  archive: ^4.0.0
+  fast_gbk: ^1.0.0
+  xml: ^7.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/js/
+    - assets/extensions/
+
+  # Bundled rather than taken from the system: the default CJK fallback renders
+  # thin and blurry, and Android has no HarmonyOS Sans to fall back to.
+  fonts:
+    - family: HarmonyOS Sans SC
+      fonts:
+        - asset: assets/fonts/HarmonyOS_Sans_SC_Regular.ttf
+          weight: 400
+        - asset: assets/fonts/HarmonyOS_Sans_SC_Medium.ttf
+          weight: 500
+        - asset: assets/fonts/HarmonyOS_Sans_SC_Bold.ttf
+          weight: 700
