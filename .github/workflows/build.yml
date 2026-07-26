@@ -11,6 +11,11 @@ on:
   pull_request:
     branches: [main]
 
+# Tag builds attach their artifacts straight to the release, so nothing has
+# to round-trip through the dev machine's connection.
+permissions:
+  contents: write
+
 env:
   FLUTTER_VERSION: '3.44.2'
 
@@ -49,6 +54,11 @@ jobs:
         with:
           name: android-apks
           path: dist/*.apk
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
 
   linux:
     runs-on: ubuntu-latest
@@ -71,6 +81,11 @@ jobs:
         with:
           name: linux-x64
           path: FusionReader-linux-x64.tar.gz
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" FusionReader-linux-x64.tar.gz --clobber
 
   macos:
     runs-on: macos-latest
@@ -89,6 +104,11 @@ jobs:
         with:
           name: macos
           path: FusionReader-macos.zip
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" FusionReader-macos.zip --clobber
 
   ios:
     runs-on: macos-latest
@@ -111,3 +131,8 @@ jobs:
         with:
           name: ios-unsigned
           path: FusionReader-ios-unsigned.ipa
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" FusionReader-ios-unsigned.ipa --clobber
