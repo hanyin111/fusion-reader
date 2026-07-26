@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/icon/app_icon.svg" width="160" alt="FusionReader">
+</p>
+
 # FusionReader 聚阅
 
 漫画 / 小说 / 动画 **三合一聚合阅读器**，使用 Flutter 构建，参考 [Miru Project](https://github.com/miru-project/miru-app) 设计，扩展格式与 Miru 兼容。

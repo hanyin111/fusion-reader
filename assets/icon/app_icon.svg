@@ -1,0 +1,88 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8E7CFF"/>
+      <stop offset="0.55" stop-color="#B36CE8"/>
+      <stop offset="1" stop-color="#F07BC0"/>
+    </linearGradient>
+    <linearGradient id="iris" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8F79FF"/>
+      <stop offset="1" stop-color="#2A1B7E"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.32" r="0.75">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- badge -->
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#bg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="108" fill="url(#glow)"/>
+  <rect x="24" y="24" width="464" height="464" rx="100" fill="none"
+        stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="6"/>
+
+  <!-- sparkles -->
+  <path d="M96 118 l9 22 22 9 -22 9 -9 22 -9 -22 -22 -9 22 -9 Z" fill="#FFF" opacity="0.9"/>
+  <path d="M420 92 l6 15 15 6 -15 6 -6 15 -6 -15 -15 -6 15 -6 Z" fill="#FFF" opacity="0.75"/>
+  <path d="M432 296 l5 12 12 5 -12 5 -5 12 -5 -12 -12 -5 12 -5 Z" fill="#FFF" opacity="0.6"/>
+  <circle cx="78" cy="320" r="6" fill="#FFF" opacity="0.5"/>
+
+  <!-- hair dome (behind face) -->
+  <ellipse cx="256" cy="212" rx="152" ry="138" fill="#5A48D6"/>
+  <!-- side locks -->
+  <path d="M108 232 C92 322 112 396 148 434 C150 362 138 300 154 250 Z" fill="#4B3AC0"/>
+  <path d="M404 232 C420 322 400 396 364 434 C362 362 374 300 358 250 Z" fill="#4B3AC0"/>
+  <!-- ahoge -->
+  <path d="M258 80 C238 46 306 34 300 72 C284 58 270 62 264 86 Z" fill="#5A48D6"/>
+
+  <!-- face -->
+  <ellipse cx="256" cy="270" rx="108" ry="98" fill="#FFE9DB"/>
+
+  <!-- blush -->
+  <ellipse cx="172" cy="330" rx="19" ry="11" fill="#FF9FB6" opacity="0.55"/>
+  <ellipse cx="340" cy="330" rx="19" ry="11" fill="#FF9FB6" opacity="0.55"/>
+
+  <!-- eyes -->
+  <ellipse cx="206" cy="308" rx="27" ry="34" fill="#FFFFFF"/>
+  <ellipse cx="306" cy="308" rx="27" ry="34" fill="#FFFFFF"/>
+  <ellipse cx="206" cy="310" rx="20" ry="30" fill="url(#iris)"/>
+  <ellipse cx="306" cy="310" rx="20" ry="30" fill="url(#iris)"/>
+  <ellipse cx="206" cy="314" rx="9" ry="14" fill="#180F45"/>
+  <ellipse cx="306" cy="314" rx="9" ry="14" fill="#180F45"/>
+  <circle cx="199" cy="298" r="7" fill="#FFF" opacity="0.95"/>
+  <circle cx="299" cy="298" r="7" fill="#FFF" opacity="0.95"/>
+  <circle cx="213" cy="326" r="3.5" fill="#FFF" opacity="0.8"/>
+  <circle cx="313" cy="326" r="3.5" fill="#FFF" opacity="0.8"/>
+  <!-- upper lashes -->
+  <path d="M177 284 Q206 264 235 282 L233 292 Q206 276 181 294 Z" fill="#2E2258"/>
+  <path d="M277 282 Q306 264 335 284 L331 294 Q306 276 279 292 Z" fill="#2E2258"/>
+  <!-- brows -->
+  <path d="M184 258 Q206 248 228 256" fill="none" stroke="#4B3AC0" stroke-width="6" stroke-linecap="round"/>
+  <path d="M284 256 Q306 248 328 258" fill="none" stroke="#4B3AC0" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- mouth -->
+  <path d="M243 346 Q256 368 269 346 Z" fill="#F2708A"/>
+
+  <!-- bangs -->
+  <path d="M144 274 Q150 182 220 162 Q256 152 292 162 Q362 182 368 274
+           Q344 244 324 264 Q314 224 290 250 Q274 214 256 244
+           Q238 214 222 250 Q198 224 188 264 Q168 244 144 274 Z" fill="#5A48D6"/>
+  <!-- bang highlight -->
+  <path d="M196 180 Q230 164 268 170" fill="none" stroke="#7A6AE8" stroke-width="8" stroke-linecap="round" opacity="0.8"/>
+
+  <!-- book cover -->
+  <path d="M256 396 C208 372 164 366 124 372 L124 462 C166 456 212 462 256 484
+           C300 462 346 456 388 462 L388 372 C348 366 304 372 256 396 Z" fill="#3D2E99"/>
+  <!-- pages -->
+  <path d="M256 402 C214 380 176 374 140 380 L140 452 C176 446 216 452 256 470 Z" fill="#FFFFFF"/>
+  <path d="M256 402 C298 380 336 374 372 380 L372 452 C336 446 296 452 256 470 Z" fill="#FDF6FF"/>
+  <!-- page lines -->
+  <path d="M158 398 C186 394 214 398 240 408 M158 420 C186 416 214 420 240 430" fill="none" stroke="#D8CFF5" stroke-width="5" stroke-linecap="round"/>
+  <path d="M354 398 C326 394 298 398 272 408 M354 420 C326 416 298 420 272 430" fill="none" stroke="#E7D9F2" stroke-width="5" stroke-linecap="round"/>
+  <!-- spine -->
+  <path d="M256 402 L256 470" stroke="#C9B8F0" stroke-width="4"/>
+
+  <!-- hands on the book edges -->
+  <circle cx="136" cy="404" r="17" fill="#FFE9DB"/>
+  <circle cx="376" cy="404" r="17" fill="#FFE9DB"/>
+</svg>
