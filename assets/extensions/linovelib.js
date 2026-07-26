@@ -205,11 +205,26 @@ export default class extends Extension {
       current = next;
     }
 
-    // Illustrations are hotlink-protected; the reader must send the same
-    // referer that the chapter page did.
+    // The site serves a cut-down page to clients it does not trust: the text
+    // stops mid-sentence with its own marker and every illustration is
+    // withheld (the only <img> left is an ad banner). Say so rather than
+    // presenting half a chapter as if it were whole.
+    const truncated = content.some(
+      (block) =>
+        typeof block === 'string' &&
+        /內容加載失敗|内容加载失败|更換瀏覽器|更换浏览器/.test(block)
+    );
+    if (truncated) {
+      content.push(
+        '⚠ 本章内容被站点截断：哔哩轻小说对非浏览器客户端只返回部分正文，' +
+          '并且不下发插图。这不是本地解析失败，重试也不会有更多内容。'
+      );
+    }
+
     return {
       content,
       subtitle,
+      // Illustrations, when a chapter does carry them, are hotlink-protected.
       headers: { Referer: `${this.webSite}/`, 'User-Agent': MOBILE_UA },
     };
   }
