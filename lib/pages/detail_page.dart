@@ -28,6 +28,15 @@ class _DetailPageState extends State<DetailPage> {
   int _groupIndex = 0;
   bool _descExpanded = false;
 
+  MediaItem get _displayItem => MediaItem(
+        package: widget.item.package,
+        type: widget.item.type,
+        title: _detail?.title.isNotEmpty == true ? _detail!.title : widget.item.title,
+        url: widget.item.url,
+        cover: _detail?.cover.isNotEmpty == true ? _detail!.cover : widget.item.cover,
+        update: widget.item.update,
+      );
+
   @override
   void initState() {
     super.initState();
@@ -37,6 +46,7 @@ class _DetailPageState extends State<DetailPage> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
+      await Storage.recordVisit(widget.item);
       final detail = await Sources.detail(widget.item);
       if (!mounted) return;
       setState(() {
@@ -46,16 +56,17 @@ class _DetailPageState extends State<DetailPage> {
           _groupIndex = h.groupIndex;
         }
       });
+      await Storage.recordVisit(_displayItem);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
     }
   }
 
-  void _openEpisode(int episodeIndex) {
+  Future<void> _openEpisode(int episodeIndex) async {
     final detail = _detail!;
     final group = detail.episodes[_groupIndex];
-    final item = widget.item;
+    final item = _displayItem;
     Widget page;
     switch (item.type) {
       case MediaType.manga:
@@ -68,7 +79,8 @@ class _DetailPageState extends State<DetailPage> {
         page = VideoPlayerPage(
             item: item, group: group, groupIndex: _groupIndex, index: episodeIndex);
     }
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    if (mounted) setState(() {});
   }
 
   /// Per-episode cache control: download, show progress, or drop the copy.
@@ -183,13 +195,7 @@ class _DetailPageState extends State<DetailPage> {
                 tooltip: fav ? '从书架移除' : '加入书架',
                 icon: Icon(fav ? Icons.favorite : Icons.favorite_border,
                     color: fav ? Colors.redAccent : null),
-                onPressed: () => Storage.toggleFavorite(MediaItem(
-                  package: item.package,
-                  type: item.type,
-                  title: detail?.title.isNotEmpty == true ? detail!.title : item.title,
-                  url: item.url,
-                  cover: detail?.cover.isNotEmpty == true ? detail!.cover : item.cover,
-                )),
+                onPressed: () => Storage.toggleFavorite(_displayItem),
               );
             },
           ),

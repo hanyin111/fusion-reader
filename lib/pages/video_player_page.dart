@@ -71,7 +71,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         groupIndex: widget.groupIndex,
         episodeIndex: _index,
         timestamp: DateTime.now().millisecondsSinceEpoch,
-      ));
+      ), item: widget.item);
       if (mounted) setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;

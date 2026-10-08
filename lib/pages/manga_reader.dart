@@ -94,7 +94,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       episodeIndex: _index,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       position: page,
-    ));
+    ), item: widget.item);
   }
 
   Future<void> _load({bool restore = false}) async {

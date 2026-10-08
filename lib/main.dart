@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:media_kit/media_kit.dart';
 
 import 'pages/home.dart';
@@ -7,6 +9,11 @@ import 'services/storage.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks([
+      'Noto Serif CJK SC',
+    ], await rootBundle.loadString('assets/fonts/OFL-NotoSerifCJK.txt'));
+  });
   MediaKit.ensureInitialized();
   await Storage.init();
   // Extension load errors are collected per-extension; never blocks startup.

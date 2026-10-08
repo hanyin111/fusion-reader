@@ -90,7 +90,7 @@ class _NovelReaderPageState extends State<NovelReaderPage> {
       episodeIndex: _index,
       timestamp: DateTime.now().millisecondsSinceEpoch,
       position: block,
-    ));
+    ), item: widget.item);
   }
 
   Future<void> _load({bool restore = false}) async {

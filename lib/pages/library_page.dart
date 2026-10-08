@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../services/local_library.dart';
 import '../services/storage.dart';
 import '../widgets/media_card.dart';
+import 'history_page.dart';
 
 /// The unified library: manga, novels and anime on one shelf.
 class LibraryPage extends StatefulWidget {
@@ -101,6 +102,13 @@ class _LibraryPageState extends State<LibraryPage> {
       appBar: AppBar(
         title: const Text('书架'),
         actions: [
+          IconButton(
+            tooltip: '历史记录',
+            icon: const Icon(Icons.history),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HistoryPage()),
+            ),
+          ),
           PopupMenuButton<MediaType>(
             tooltip: '导入本地内容',
             icon: const Icon(Icons.add),
@@ -119,9 +127,12 @@ class _LibraryPageState extends State<LibraryPage> {
           ),
         ],
       ),
-      body: ValueListenableBuilder(
-        valueListenable: Storage.favoritesBox.listenable(),
-        builder: (context, Box box, _) {
+      body: ListenableBuilder(
+        listenable: Listenable.merge([
+          Storage.favoritesBox.listenable(),
+          Storage.historyBox.listenable(),
+        ]),
+        builder: (context, _) {
           var items = Storage.favorites();
           // Most recently read first.
           items.sort((a, b) {

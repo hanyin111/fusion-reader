@@ -384,6 +384,8 @@ Map<String, String> _headers(Map json) {
 /// Reading/watching progress for one media item.
 class HistoryRecord {
   final String key; // package|url
+  // Older releases only stored chapter progress, without the work's metadata.
+  final MediaItem? item;
   final String episodeUrl;
   final String episodeName;
   final int groupIndex;
@@ -396,6 +398,7 @@ class HistoryRecord {
 
   const HistoryRecord({
     required this.key,
+    this.item,
     required this.episodeUrl,
     required this.episodeName,
     required this.groupIndex,
@@ -404,8 +407,12 @@ class HistoryRecord {
     this.position = 0,
   });
 
-  HistoryRecord copyWith({int? position, int? timestamp}) => HistoryRecord(
+  bool get hasProgress => episodeUrl.isNotEmpty;
+
+  HistoryRecord copyWith({MediaItem? item, int? position, int? timestamp}) =>
+      HistoryRecord(
         key: key,
+        item: item ?? this.item,
         episodeUrl: episodeUrl,
         episodeName: episodeName,
         groupIndex: groupIndex,
@@ -415,22 +422,24 @@ class HistoryRecord {
       );
 
   Map<String, dynamic> toJson() => {
-        'key': key,
-        'episodeUrl': episodeUrl,
-        'episodeName': episodeName,
-        'groupIndex': groupIndex,
-        'episodeIndex': episodeIndex,
-        'timestamp': timestamp,
-        'position': position,
-      };
+    'key': key,
+    if (item != null) 'item': item!.toJson(),
+    'episodeUrl': episodeUrl,
+    'episodeName': episodeName,
+    'groupIndex': groupIndex,
+    'episodeIndex': episodeIndex,
+    'timestamp': timestamp,
+    'position': position,
+  };
 
   factory HistoryRecord.fromJson(Map json) => HistoryRecord(
-        key: json['key'] ?? '',
-        episodeUrl: json['episodeUrl'] ?? '',
-        episodeName: json['episodeName'] ?? '',
-        groupIndex: json['groupIndex'] ?? 0,
-        episodeIndex: json['episodeIndex'] ?? 0,
-        timestamp: json['timestamp'] ?? 0,
-        position: json['position'] ?? 0,
-      );
+    key: json['key'] ?? '',
+    item: json['item'] is Map ? MediaItem.fromJson(json['item']) : null,
+    episodeUrl: json['episodeUrl'] ?? '',
+    episodeName: json['episodeName'] ?? '',
+    groupIndex: json['groupIndex'] ?? 0,
+    episodeIndex: json['episodeIndex'] ?? 0,
+    timestamp: json['timestamp'] ?? 0,
+    position: json['position'] ?? 0,
+  );
 }

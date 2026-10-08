@@ -23,6 +23,16 @@ class Storage {
     _disabled = await Hive.openBox('extensions_disabled');
     _local = await Hive.openBox('local_library');
     await OfflineCache.init(await Hive.openBox('offline_manifests'));
+    // Recover metadata for old progress records using books already on disk.
+    final knownItems = {
+      for (final item in [...localItems(), ...favorites()]) item.key: item,
+    };
+    for (final record in history()) {
+      final item = knownItems[record.key];
+      if (record.item == null && item != null) {
+        await _history.put(record.key, record.copyWith(item: item).toJson());
+      }
+    }
   }
 
   // ---- local library ----
@@ -59,14 +69,68 @@ class Storage {
   // ---- history ----
   static Box get historyBox => _history;
 
-  static HistoryRecord? historyOf(String key) {
+  static HistoryRecord? _historyRecord(String key) {
     final v = _history.get(key);
     if (v is Map) return HistoryRecord.fromJson(v);
     return null;
   }
 
-  static Future<void> saveHistory(HistoryRecord record) =>
-      _history.put(record.key, record.toJson());
+  /// Browse-only entries must not be mistaken for a saved chapter position.
+  static HistoryRecord? historyOf(String key) {
+    final record = _historyRecord(key);
+    return record?.hasProgress == true ? record : null;
+  }
+
+  static List<HistoryRecord> history() =>
+      _history.values.whereType<Map>().map(HistoryRecord.fromJson).toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+  static MediaItem _historyItem(MediaItem item, MediaItem? previous) =>
+      MediaItem(
+        package: item.package,
+        type: item.type,
+        title: item.title.isNotEmpty ? item.title : previous?.title ?? '',
+        url: item.url,
+        cover: item.cover.isNotEmpty ? item.cover : previous?.cover ?? '',
+        update: item.update.isNotEmpty ? item.update : previous?.update ?? '',
+      );
+
+  /// Remember a work even before reading, preserving any chapter and position.
+  static Future<void> recordVisit(MediaItem item) {
+    final previous = _historyRecord(item.key);
+    final record =
+        previous ??
+        HistoryRecord(
+          key: item.key,
+          episodeUrl: '',
+          episodeName: '',
+          groupIndex: 0,
+          episodeIndex: 0,
+          timestamp: 0,
+        );
+    return _history.put(
+      item.key,
+      record
+          .copyWith(
+            item: _historyItem(item, previous?.item),
+            timestamp: DateTime.now().millisecondsSinceEpoch,
+          )
+          .toJson(),
+    );
+  }
+
+  static Future<void> saveHistory(HistoryRecord record, {MediaItem? item}) {
+    final previous = _historyRecord(record.key)?.item;
+    final metadata = item ?? record.item ?? previous;
+    assert(metadata == null || metadata.key == record.key);
+    final saved = metadata == null
+        ? record
+        : record.copyWith(item: _historyItem(metadata, previous));
+    return _history.put(record.key, saved.toJson());
+  }
+
+  static Future<void> removeHistory(String key) => _history.delete(key);
+  static Future<void> clearHistory() => _history.clear();
 
   // ---- app settings ----
   static String get proxy => _settings.get('proxy', defaultValue: '') as String;
@@ -78,10 +142,11 @@ class Storage {
       _settings.put(key, value);
 
   // ---- user-installed extensions ----
-  static Map<String, String> installedScripts() => Map.fromEntries(_extensions
-      .toMap()
-      .entries
-      .map((e) => MapEntry(e.key.toString(), e.value.toString())));
+  static Map<String, String> installedScripts() => Map.fromEntries(
+    _extensions.toMap().entries.map(
+      (e) => MapEntry(e.key.toString(), e.value.toString()),
+    ),
+  );
 
   static Future<void> installScript(String package, String script) =>
       _extensions.put(package, script);
@@ -103,8 +168,11 @@ class Storage {
   static dynamic extSetting(String package, String key) =>
       _extSettings.get('$package|$key');
 
-  static Future<void> setExtSetting(String package, String key, dynamic value) =>
-      _extSettings.put('$package|$key', value);
+  static Future<void> setExtSetting(
+    String package,
+    String key,
+    dynamic value,
+  ) => _extSettings.put('$package|$key', value);
 
   // ---- setting declarations, so the UI can render an editor ----
   static List<Map> extSettingSchemas(String package) {

@@ -42,7 +42,7 @@ class ReaderFont {
   static const options = <ReaderFont>[
     ReaderFont('鸿蒙黑体', 'HarmonyOS Sans SC'),
     ReaderFont('系统默认', null),
-    ReaderFont('衬线', 'serif'),
+    ReaderFont('衬线', 'Noto Serif CJK SC'),
     ReaderFont('等宽', 'monospace'),
   ];
 

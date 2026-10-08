@@ -64,6 +64,11 @@ jobs:
         run: |
           set -o pipefail
           flutter test integration_test/extension_runtime_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded --verbose 2>&1 | tee build/verification/ios-runtime-test.log
+      - name: Test history and bundled serif font on iOS simulator
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          flutter test integration_test/history_font_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-history-font-test.log
       - name: Capture simulator diagnostics
         if: failure()
         timeout-minutes: 2
