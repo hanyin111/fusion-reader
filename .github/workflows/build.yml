@@ -112,6 +112,7 @@ jobs:
 
   ios:
     runs-on: macos-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -120,6 +121,13 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Test extension runtime on iOS simulator
+        timeout-minutes: 20
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for group in devices.values() for d in group if d["name"].startswith("iPhone")))')
+          xcrun simctl boot "$DEVICE_ID"
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+          flutter test integration_test/extension_runtime_test.dart -d "$DEVICE_ID" --timeout 3m
       # Unsigned build — sideload with AltStore/TrollStore or sign with your own certificate.
       - run: flutter build ios --release --no-codesign
       - name: Package unsigned ipa

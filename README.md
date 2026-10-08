@@ -126,6 +126,8 @@ export default class extends Extension {
 
 ## 架构说明
 
+iOS/macOS 使用 JavaScriptCore，其他平台使用 QuickJS。运行时兼容两种引擎的异步返回值编码，并为每个 Apple 平台扩展单独注册原生回调，避免多个插件之间串线。GitHub Actions 的 iOS 构建会先运行模拟器测试，覆盖全部内置扩展初始化、多插件并发、浏览/搜索、评论、切换和失败重试，再生成未签名 IPA。
+
 Mihon 插件是 Android APK（Dalvik 字节码），技术上无法在 Windows/iOS 等平台加载，因此本项目与 Miru 一样采用跨平台 JS 扩展方案，并保持与 Miru 扩展格式互通。
 
 ```

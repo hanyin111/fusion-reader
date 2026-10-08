@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
@@ -8,32 +9,59 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:xpath_selector_html_parser/xpath_selector_html_parser.dart';
 
 import '../models/models.dart';
+import 'apple_js_runtime.dart';
 import 'browser_loader.dart';
+import 'extension_result.dart';
 import 'network.dart';
 import 'storage.dart';
 
-class ExtensionException implements Exception {
-  final String package;
-  final String message;
-  ExtensionException(this.package, this.message);
-  @override
-  String toString() => '[$package] $message';
-}
+export 'extension_result.dart' show ExtensionException;
 
-/// One loaded extension: its own QuickJS runtime plus the Dart bridge.
+/// One loaded extension: its own JS runtime plus the Dart bridge.
 class ExtensionService {
   final ExtensionMeta meta;
   final String script;
   final String prelude;
 
   JavascriptRuntime? _rt;
-  bool get loaded => _rt != null;
+  Future<void>? _initializing;
+  bool _ready = false;
+  int _generation = 0;
+  bool get loaded => _ready;
 
   ExtensionService({required this.meta, required this.script, required this.prelude});
 
   Future<void> init() async {
-    if (_rt != null) return;
-    final rt = getJavascriptRuntime(xhr: false);
+    if (_ready) return;
+    final pending = _initializing;
+    if (pending != null) return pending;
+    final initialization = _initialize();
+    _initializing = initialization;
+    try {
+      await initialization;
+    } finally {
+      if (identical(_initializing, initialization)) _initializing = null;
+    }
+  }
+
+  Future<void> _initialize() async {
+    final generation = _generation;
+    try {
+      await _createRuntime();
+      if (generation != _generation) {
+        throw ExtensionException(meta.package, '扩展加载已取消，请重试');
+      }
+      _ready = true;
+    } catch (_) {
+      if (generation == _generation) dispose();
+      rethrow;
+    }
+  }
+
+  Future<void> _createRuntime() async {
+    final rt = Platform.isIOS || Platform.isMacOS
+        ? AppleJsRuntime()
+        : getJavascriptRuntime(xhr: false);
     _rt = rt;
 
     rt.onMessage('console', (dynamic args) {
@@ -84,6 +112,9 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
   }
 
   void dispose() {
+    _generation++;
+    _ready = false;
+    _initializing = null;
     try {
       _rt?.dispose();
     } catch (_) {}
@@ -170,15 +201,8 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
         ? const Duration(minutes: 5)
         : const Duration(seconds: 120);
     final settled = await rt.handlePromise(promise, timeout: timeout);
-    final raw = settled.stringResult;
-    dynamic decoded;
-    try {
-      decoded = jsonDecode(raw);
-    } catch (_) {
-      throw ExtensionException(meta.package, '$method() returned unparseable result: $raw');
-    }
-    if (decoded is Map && decoded['ok'] == true) return decoded['data'];
-    throw ExtensionException(meta.package, (decoded is Map ? decoded['error'] : raw).toString());
+    return decodeExtensionResult(settled.stringResult,
+        package: meta.package, method: method);
   }
 
   // ---------- bridge plumbing ----------
@@ -197,15 +221,14 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
           ok = false;
           data = e.toString();
         }
-        _resolveBridge(id, ok, data);
+        _resolveBridge(rt, id, ok, data);
       });
       return null;
     });
   }
 
-  void _resolveBridge(dynamic id, bool ok, dynamic data) {
-    final rt = _rt;
-    if (rt == null) return;
+  void _resolveBridge(JavascriptRuntime rt, dynamic id, bool ok, dynamic data) {
+    if (!identical(rt, _rt)) return;
     // Double-encode: the inner JSON is passed as a string literal to JS.
     final literal = jsonEncode(jsonEncode(data));
     try {
