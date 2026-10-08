@@ -7,7 +7,9 @@ import '../services/offline_cache.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
 import '../widgets/media_card.dart';
+import '../widgets/comments_button.dart';
 import '../widgets/source_image.dart';
+import 'author_search_page.dart';
 import 'manga_reader.dart';
 import 'novel_reader.dart';
 import 'video_player_page.dart';
@@ -241,6 +243,33 @@ class _DetailPageState extends State<DetailPage> {
                     children: [
                       Text(detail.title,
                           style: Theme.of(context).textTheme.titleLarge),
+                      if (detail.authors.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Wrap(
+                            spacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              const Text('作者：'),
+                              for (final author in detail.authors)
+                                if (widget.item.type != MediaType.anime &&
+                                    !LocalLibrary.isLocal(widget.item.package))
+                                  TextButton(
+                                    onPressed: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => AuthorSearchPage(
+                                          item: widget.item,
+                                          author: author,
+                                        ),
+                                      ),
+                                    ),
+                                    child: Text(author.name),
+                                  )
+                                else
+                                  Text(author.name),
+                            ],
+                          ),
+                        ),
                       const SizedBox(height: 8),
                       Wrap(spacing: 8, children: [
                         Chip(
@@ -273,6 +302,8 @@ class _DetailPageState extends State<DetailPage> {
                             _openEpisode(idx);
                           },
                         ),
+                      if (Sources.commentScope(widget.item) == CommentScope.work)
+                        CommentsButton(item: widget.item, showLabel: true),
                     ],
                   ),
                 ),
@@ -280,14 +311,14 @@ class _DetailPageState extends State<DetailPage> {
             ),
           ),
         ),
-        if (detail.desc.isNotEmpty)
+        if (detail.descriptionWithoutAuthor.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: InkWell(
                 onTap: () => setState(() => _descExpanded = !_descExpanded),
                 child: Text(
-                  detail.desc,
+                  detail.descriptionWithoutAuthor,
                   maxLines: _descExpanded ? null : 3,
                   overflow: _descExpanded ? null : TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodyMedium,
@@ -344,7 +375,14 @@ class _DetailPageState extends State<DetailPage> {
                         fontWeight: isLast ? FontWeight.bold : null,
                       )),
                   leading: isLast ? const Icon(Icons.bookmark, size: 18) : null,
-                  trailing: _cacheButton(ep),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (Sources.commentScope(widget.item) == CommentScope.chapter)
+                        CommentsButton(item: widget.item, episode: ep),
+                      _cacheButton(ep),
+                    ],
+                  ),
                   onTap: () => _openEpisode(i),
                 );
               },

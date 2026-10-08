@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         MangaDex
-// @version      v1.0.0
+// @version      v1.1.0
 // @author       FusionReader
 // @lang         all
 // @license      MIT
@@ -55,8 +55,18 @@ export default class extends Extension {
     return this.mapList(res);
   }
 
+  async searchAuthor(author, page) {
+    if (!author.id) return this.search(author.name, page);
+    const offset = (page - 1) * 20;
+    const res = await this.request(
+      `/manga?limit=20&offset=${offset}&authors[]=${encodeURIComponent(author.id)}` +
+      '&includes[]=cover_art&order[latestUploadedChapter]=desc&contentRating[]=safe&contentRating[]=suggestive'
+    );
+    return this.mapList(res);
+  }
+
   async detail(url) {
-    const res = await this.request(`/manga/${url}?includes[]=cover_art`);
+    const res = await this.request(`/manga/${url}?includes[]=cover_art&includes[]=author`);
     const manga = res.data;
     const descMap = manga.attributes.description || {};
     const desc = descMap.en || descMap.zh || Object.values(descMap)[0] || '';
@@ -125,6 +135,9 @@ export default class extends Extension {
       title: this.titleOf(manga),
       cover: this.covers(manga),
       desc,
+      authors: (manga.relationships || [])
+        .filter((r) => r.type === 'author' && r.attributes && r.attributes.name)
+        .map((r) => ({ name: r.attributes.name, id: r.id })),
       episodes,
     };
   }

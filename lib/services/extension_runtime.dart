@@ -8,6 +8,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:xpath_selector_html_parser/xpath_selector_html_parser.dart';
 
 import '../models/models.dart';
+import 'browser_loader.dart';
 import 'network.dart';
 import 'storage.dart';
 
@@ -127,6 +128,19 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     return MediaDetail.fromJson(res);
   }
 
+  Future<List<MediaItem>> searchAuthor(MediaAuthor author, int page) async {
+    return _toItems(await _call('searchAuthor', [author.toJson(), page]));
+  }
+
+  Future<CommentPage> comments(String workUrl, String chapterUrl, int page,
+      {String? parentId}) async {
+    final res = await _call('comments', [workUrl, chapterUrl, page, parentId]);
+    if (res is! Map || res['comments'] is! List) {
+      throw ExtensionException(meta.package, '评论返回格式不正确，请稍后重试');
+    }
+    return CommentPage.fromJson(res);
+  }
+
   /// Raw watch result — callers pick the typed wrapper based on [meta.type].
   Future<Map> watch(String url) async {
     final res = await _call('watch', [url]);
@@ -151,7 +165,11 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     final expr = '__invoke(${jsonEncode(method)}, ${jsonEncode(jsonEncode(args))})';
     final promise = await rt.evaluateAsync(expr);
     rt.executePendingJob();
-    final settled = await rt.handlePromise(promise, timeout: const Duration(seconds: 120));
+    // Browser-rendered chapters may have many sequential sub-pages.
+    final timeout = meta.package == 'linovelib' && method == 'watch'
+        ? const Duration(minutes: 5)
+        : const Duration(seconds: 120);
+    final settled = await rt.handlePromise(promise, timeout: timeout);
     final raw = settled.stringResult;
     dynamic decoded;
     try {
@@ -209,6 +227,20 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     headers.putIfAbsent('User-Agent', () => kDefaultUserAgent);
 
     final override = options['netMode']?.toString();
+    if (options['browser'] == true) {
+      if (meta.package != 'linovelib' || method != 'GET') {
+        throw ExtensionException(meta.package, '浏览器加载仅用于哔哩轻小说的章节页面');
+      }
+      return BrowserLoader.load(
+        url: url,
+        headers: headers,
+        selector: (options['browserSelector'] ?? '#acontent').toString(),
+        rejectPattern: (options['browserRejectPattern'] ?? '').toString(),
+        proxy: Network.usesProxyFor(meta.package, override: override)
+            ? Network.resolvedProxy()
+            : '',
+      );
+    }
     final dio = override == null
         ? Network.forPackage(meta.package)
         : (override == 'direct' ? Network.direct : Network.proxied);

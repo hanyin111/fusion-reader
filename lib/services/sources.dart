@@ -6,6 +6,11 @@ import 'offline_cache.dart';
 /// Resolves content for a shelf item, whether it came from a web extension or
 /// from the device. Readers call through here so they never branch on origin.
 class Sources {
+  static CommentScope? commentScope(MediaItem item) {
+    if (LocalLibrary.isLocal(item.package)) return null;
+    return ExtensionManager.instance.byPackage(item.package)?.meta.commentScope;
+  }
+
   static Future<MediaDetail> detail(MediaItem item) async {
     if (LocalLibrary.isLocal(item.package)) return LocalLibrary.detail(item);
     final service = await ExtensionManager.instance.ensureLoaded(item.package);
@@ -24,7 +29,15 @@ class Sources {
   /// episodes open instantly and keep working offline.
   static Future<Map> watchCached(MediaItem item, String episodeUrl) async {
     final cached = OfflineCache.read(item.package, episodeUrl);
-    if (cached != null) return cached;
+    // Older linovelib versions saved the site's short error preview as a novel.
+    // Keep that data for rollback, but fetch a complete chapter when reading it.
+    final truncatedPreview =
+        cached != null &&
+        item.package == 'linovelib' &&
+        NovelWatch.fromJson(cached).textLines.any(
+          (line) => RegExp('內容加載失敗|内容加载失败|本章内容被站点截断').hasMatch(line),
+        );
+    if (cached != null && !truncatedPreview) return cached;
     return watch(item, episodeUrl);
   }
 

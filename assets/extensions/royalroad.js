@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Royal Road
-// @version      v1.0.0
+// @version      v1.1.0
 // @author       FusionReader
 // @lang         en
 // @license      MIT
@@ -42,6 +42,11 @@ export default class extends Extension {
     return this.parseList(html);
   }
 
+  async searchAuthor(author, page) {
+    const html = await this.request(`/fictions/search?author=${encodeURIComponent(author.name)}&page=${page}`);
+    return this.parseList(html);
+  }
+
   async detail(url) {
     const html = await this.request(url);
     const titleEl = await this.querySelector(html, 'div.fic-title h1');
@@ -49,6 +54,7 @@ export default class extends Extension {
     const cover = await this.getAttributeText(html, 'div.fic-header img', 'src');
     const descEl = await this.querySelector(html, 'div.description');
     const desc = (await descEl.text).trim();
+    const author = await this.getAttributeText(html, 'meta[property="books:author"]', 'content');
 
     const rows = await this.querySelectorAll(html, 'table#chapters tbody tr');
     const chapters = [];
@@ -64,6 +70,7 @@ export default class extends Extension {
       title,
       cover: cover || '',
       desc,
+      authors: author ? [{ name: author }] : [],
       episodes: [{ title: 'Chapters', urls: chapters }],
     };
   }

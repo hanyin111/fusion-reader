@@ -8,6 +8,7 @@ import '../models/reader_settings.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
 import '../widgets/novel_settings_sheet.dart';
+import '../widgets/comments_button.dart';
 import '../widgets/source_image.dart';
 
 class NovelReaderPage extends StatefulWidget {
@@ -198,6 +199,7 @@ class _NovelReaderPageState extends State<NovelReaderPage> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 16)),
               actions: [
+                CommentsButton(item: widget.item, episode: _episode),
                 IconButton(
                   tooltip: '阅读设置',
                   icon: const Icon(Icons.text_format),

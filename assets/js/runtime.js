@@ -248,6 +248,32 @@ class Extension {
 
   // Lifecycle + API surface; extensions override what they support.
   async load() {}
+
+  // Optional source-specific author search; older scripts retain keyword search.
+  async searchAuthor(author, page) {
+    return this.search(author.name, page, { author });
+  }
+
+  // Optional read-only comments, declared by @comments chapter|work.
+  async comments(workUrl, chapterUrl, page, parentId) {
+    throw new Error('此扩展暂不支持评论');
+  }
+
+  // Several HTML sources expose author names/links in labelled metadata rows.
+  async authorsFromMetadata(html) {
+    for (const row of await this.querySelectorAll(html, 'li')) {
+      const content = await row.content;
+      const label = (await (await this.querySelector(content, 'strong')).text).trim();
+      if (!/^(?:作者|著者|Authors?|Author\(s\))\s*[:：]?$/i.test(label)) continue;
+      const authors = [];
+      for (const link of await this.querySelectorAll(content, 'a')) {
+        const name = (await link.text).trim();
+        if (name) authors.push({ name, url: (await link.getAttributeText('href')) || '' });
+      }
+      return authors;
+    }
+    return [];
+  }
   async unload() {}
 
   // Optional browse channels (categories, rankings, sort orders).

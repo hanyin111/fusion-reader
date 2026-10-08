@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         哔咔漫画
-// @version      v1.0.0
+// @version      v1.2.0
 // @author       FusionReader
 // @lang         zh-cn
 // @license      MIT
@@ -10,6 +10,7 @@
 // @webSite      https://picaapi.picacomic.com
 // @nsfw         true
 // @network      auto
+// @comments     work
 // ==/MiruExtension==
 //
 // Requires a Picacomic account: fill 帐号/密码 in this extension's settings.
@@ -215,8 +216,8 @@ export default class extends Extension {
     return {
       title: comic.title || '',
       cover: this.imageUrl(comic.thumb),
+      authors: comic.author ? [{ name: comic.author }] : [],
       desc: [
-        comic.author ? `作者: ${comic.author}` : '',
         comic.categories && comic.categories.length
           ? `分类: ${comic.categories.join(', ')}`
           : '',
@@ -226,6 +227,34 @@ export default class extends Extension {
         .join('\n'),
       episodes: [{ title: '章节', urls: eps.map((e) => ({ name: e.name, url: e.url })) }],
     };
+  }
+
+  async comments(workUrl, chapterUrl, page, parentId) {
+    // Pica exposes one discussion for the whole comic, not one per episode.
+    const path = parentId
+      ? `comments/${encodeURIComponent(parentId)}/childrens?page=${page}`
+      : `comics/${encodeURIComponent(workUrl)}/comments?page=${page}`;
+    const data = await this.api(path, 'GET');
+    const block = data && data.comments;
+    if (!block || !Array.isArray(block.docs)) throw new Error('评论加载失败，请稍后重试');
+    const comments = [];
+    const seen = new Set();
+    const top = !parentId && page === 1 ? (data.topComments || []) : [];
+    for (const comment of [...top, ...block.docs]) {
+      if (seen.has(comment._id)) continue;
+      seen.add(comment._id);
+      comments.push({
+        id: String(comment._id),
+        username: (comment._user || {}).name || '匿名读者',
+        text: comment.hide ? '' : (comment.content || ''),
+        time: comment.created_at || '',
+        likes: Number(comment.likesCount) || 0,
+        replyCount: Number(comment.commentsCount) || 0,
+        hidden: !!comment.hide,
+        pinned: !!comment.isTop || top.some((pinned) => pinned._id === comment._id),
+      });
+    }
+    return { comments, hasMore: page < Number(block.pages), total: Number(block.total) || 0 };
   }
 
   async watch(url) {

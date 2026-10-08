@@ -11,6 +11,8 @@
 - 📚 **统一书架** — 漫画、小说、动画收藏在同一个书架，支持按类型筛选、阅读进度记忆
 - 🧩 **Miru 兼容 JS 扩展系统** — 扩展是带 `==MiruExtension==` 头部的 JS 脚本，QuickJS 引擎沙箱运行，可从 URL / 粘贴脚本安装新源（兼容 Miru 扩展仓库的 raw 链接）
 - 📖 **三种阅读器** — 漫画（翻页 / 条漫双模式、缩放）、小说（字号调节、章节导航）、视频（media_kit，支持 HLS/MP4，全平台硬解）
+- ✍️ **同作者作品** — 在小说/漫画详情页点击作者，在当前扩展中查找其他作品；多位作者可分别点击
+- 💬 **阅读评论** — 哔哩轻小说支持目录和阅读器内的章节评论；哔咔支持作品评论和回复（各章节共用），可分页、刷新，剧透评论先折叠
 - 🌐 **内置 8 个源**，其中每个类目至少 2 个经过真实联网验证可用
 - 💻 **全平台** — Windows / Android / iOS / macOS / Linux
 
@@ -31,6 +33,10 @@
 > 「实测起播」指测试真的把流解码出了画面（position > 0），而不只是拿到了 URL。
 > 所有源可在「扩展」页随时启用/禁用并单独切换网络路由。
 
+哔哩轻小说正文加载已于 2026-10-07 更新：使用手机 UA、手机设备参数和真实浏览器会话，先访问目录执行站点脚本，再读取正文并合并章内分页。过滤隐藏重复段落，遇到截断提示会报错，不再把预览保存成完整章节。旧版含截断提示的离线缓存会在阅读时重新拉取。Windows 已实测《Re:从零开始的异世界生活》第一章全部 8 页（29,306 字），插图章 8 张图片及首图下载。
+
+Windows 需要 Microsoft Edge WebView2 运行时。Android、iOS、macOS 已接入浏览器加载，但尚未在实机验证；Linux 暂不支持此源的浏览器正文加载。Windows 和支持代理覆盖的 Android WebView 跟随源的网络路由；iOS、macOS 请使用系统网络，浏览器加载暂不支持应用内自定义代理。自行安装的同名脚本会覆盖内置源，需同步更新为 `assets/extensions/linovelib.js`。
+
 ### 网络路由（重要）
 
 源站点对网络出口的要求是相反的：国内站点会拒绝境外代理出口，被墙站点则必须走代理。所以路由是**按源**、甚至**按请求**决定的：
@@ -49,7 +55,7 @@
 ```bash
 flutter pub get
 
-# Windows（需 Visual Studio C++ 工具链）
+# Windows（需 Visual Studio C++ 工具链，nuget.exe 需在 PATH 中）
 flutter build windows --release
 
 # Android（需 Android SDK）
@@ -69,6 +75,15 @@ flutter build ios --release --no-codesign
 
 ```bash
 flutter test integration_test/sources_test.dart -d windows
+
+# 哔哩轻小说正文、长章节分页和插图实测（使用独立测试数据）
+flutter test integration_test/linovelib_test.dart -d windows
+
+# 旧截断缓存与完整离线缓存回归（独立测试进程）
+flutter test integration_test/linovelib_cache_test.dart -d windows
+
+# 离线分页逻辑回归（需 Node.js）
+node test/linovelib_test.mjs
 ```
 
 对每个已启用扩展真实联网跑 `latest → search → detail → watch` 全链路，并断言漫画/小说/动画每类至少 2 个源可用。
@@ -89,7 +104,12 @@ flutter test integration_test/sources_test.dart -d windows
 export default class extends Extension {
   async latest(page) { /* -> [{title, url, cover}] */ }
   async search(kw, page) { /* -> [{title, url, cover}] */ }
-  async detail(url) { /* -> {title, cover, desc, episodes:[{title, urls:[{name,url}]}]} */ }
+  async detail(url) { /* -> {title, cover, desc, authors:[{name,id?,url?}], episodes:[{title, urls:[{name,url}]}]} */ }
+  async searchAuthor(author, page) { /* 可选：按作者 ID/链接查询，返回 [{title,url,cover}] */ }
+  // 声明 @comments chapter 或 @comments work 后可实现只读评论：
+  async comments(workUrl, chapterUrl, page, parentId) {
+    /* -> {comments:[{id,username,text,time?,likes?,replyCount?,spoiler?,hidden?,pinned?,images?}],hasMore,total?,headers?} */
+  }
   async watch(url) {
     // 漫画: {urls:[...], headers?}   小说: {content:[...]}   动画: {type:'hls'|'mp4', url, headers?}
   }
@@ -97,6 +117,12 @@ export default class extends Extension {
 ```
 
 运行时提供 `this.request` / `querySelector` / `querySelectorAll` / `getAttributeText` / `queryXPath` / `getSetting` 等 Miru 同款 API。
+
+`authors` 是作品作者，区别于扩展头部的开发者 `@author`。内置源使用站点的作者目录或作者筛选；未实现 `searchAuthor` 的旧扩展会调用 `search(author.name, page, {author})`。旧扩展简介开头的 `作者：姓名` / `Author: name` 也兼容点击查询，结果取决于该扩展的搜索能力。
+
+评论默认不启用。扩展头的 `@comments chapter` / `@comments work` 分别表示章节评论和整部作品评论，作品评论在详情页与阅读器中明确标注。当前功能仅查看评论，哔咔沿用扩展设置中的帐号认证；回复查询传入 `parentId`。未更新的同名自装插件会覆盖内置脚本，需同步更新才能显示评论入口。
+
+修改前可运行 `./scripts/backup.ps1 -Label comments`（PowerShell）。脚本保存当前源码及 Windows 程序，完整读取检查新压缩包后再删除旧备份，只保留最近一份；失败时保留旧备份。备份不包含编译缓存或更早的备份文件。
 
 ## 架构说明
 

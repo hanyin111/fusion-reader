@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         ESJ Zone
-// @version      v1.0.0
+// @version      v1.1.0
 // @author       FusionReader
 // @lang         zh-tw
 // @license      MIT
@@ -172,6 +172,7 @@ export default class extends Extension {
       title,
       cover: '',
       desc,
+      authors: await this.authorsFromMetadata(html),
       episodes: [{ title: '章節', urls: chapters }],
     };
   }

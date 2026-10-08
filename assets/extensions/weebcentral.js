@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         WeebCentral
-// @version      v1.0.0
+// @version      v1.1.0
 // @author       FusionReader
 // @lang         en
 // @license      MIT
@@ -48,6 +48,16 @@ export default class extends Extension {
     return this.parseArticles(html);
   }
 
+  async searchAuthor(author, page) {
+    const offset = (page - 1) * 32;
+    const html = await this.request(
+      `/search/data?limit=32&offset=${offset}&author=${encodeURIComponent(author.name)}` +
+      '&sort=Alphabet&order=Ascending&official=Any&display_mode=Full%20Display',
+      { headers: { 'HX-Request': 'true' } }
+    );
+    return this.parseArticles(html);
+  }
+
   seriesIdOf(url) {
     const m = url.match(/\/series\/([^/]+)/);
     return m ? m[1] : '';
@@ -83,6 +93,7 @@ export default class extends Extension {
       title,
       cover: cover || '',
       desc,
+      authors: await this.authorsFromMetadata(html),
       episodes: [{ title: 'Chapters', urls: chapters }],
     };
   }

@@ -7,6 +7,7 @@ import '../models/models.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
 import '../widgets/source_image.dart';
+import '../widgets/comments_button.dart';
 
 class MangaReaderPage extends StatefulWidget {
   final MediaItem item;
@@ -253,6 +254,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              CommentsButton(item: widget.item, episode: _episode, color: Colors.white),
               IconButton(
                 tooltip: _webtoon ? '切换为翻页模式' : '切换为条漫模式',
                 icon: Icon(_webtoon ? Icons.auto_stories : Icons.view_day,

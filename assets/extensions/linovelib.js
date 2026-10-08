@@ -1,31 +1,45 @@
 // ==MiruExtension==
 // @name         哔哩轻小说
-// @version      v1.0.0
+// @version      v1.3.0
 // @author       FusionReader
 // @lang         zh-cn
 // @license      MIT
 // @package      linovelib
 // @type         fikushon
 // @icon         https://www.linovelib.com/images/favicon.ico
-// @webSite      https://www.linovelib.com
+// @webSite      https://www.bilinovel.net
 // @nsfw         false
 // @network      auto
+// @comments     chapter
 // ==/MiruExtension==
 //
-// The site rejects requests that arrive without a plausible referer chain, so
-// every call states where it "came from". Chapter bodies are also split across
-// numbered sub-pages which are stitched back together in watch().
+// Complete chapters require a mobile browser session and the site's scripts.
+// A mobile UA alone receives a short preview. Render pages before parsing them,
+// and follow numbered sub-pages without crossing into the next chapter.
 
 const MOBILE_UA =
-  'Mozilla/5.0 (Linux; Android 12; Pixel 5) AppleWebKit/537.36 ' +
+  'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
+const INCOMPLETE_BODY = /內容加載失敗|内容加载失败|更換瀏覽器|更换浏览器/;
 
 export default class extends Extension {
-  async get(path, referer) {
-    return this.request(path, {
+  mobileUrl(path) {
+    // Existing shelf/history entries may still refer to the desktop domain.
+    return this.absoluteUrl(this.webSite + '/', path.replace(
+      /^https?:\/\/(?:www\.|tw\.|m\.)?(?:linovelib\.com|bilinovel\.com|bilinovel\.net)(?=\/|$)/i,
+      this.webSite
+    ));
+  }
+
+  async get(path, referer, browser = false) {
+    return this.request(this.mobileUrl(path), {
+      browser,
+      browserSelector: '#acontent',
+      browserRejectPattern: INCOMPLETE_BODY.source,
       headers: {
         'User-Agent': MOBILE_UA,
-        Referer: referer || `${this.webSite}/`,
+        Referer: referer ? this.mobileUrl(referer) : `${this.webSite}/`,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9',
       },
     });
@@ -112,6 +126,18 @@ export default class extends Extension {
     return m ? m[1] : '';
   }
 
+  async searchAuthor(author, page) {
+    // The author catalogue is separate from guarded/title-only keyword search.
+    if (page > 1) return [];
+    const path = author.url || `/authorarticle/${encodeURIComponent(author.name)}.html`;
+    const html = await this.get(path);
+    const container = await this.querySelector(html, '.book-ol');
+    // Limit parsing to the author list; the site's search popup lists unrelated books.
+    const content = await container.content;
+    if (!content) throw new Error('作者作品列表加载失败，请稍后重试');
+    return this.parseNovelLinks(content);
+  }
+
   async detail(url) {
     const id = this.novelId(url);
     const html = await this.get(`/novel/${id}.html`);
@@ -124,6 +150,8 @@ export default class extends Extension {
       (await this.getAttributeText(html, 'meta[property="og:description"]', 'content')) || '';
     const author =
       (await this.getAttributeText(html, 'meta[property="og:novel:author"]', 'content')) || '';
+    const authorUrl =
+      (await this.getAttributeText(html, 'meta[property="og:novel:author_link"]', 'content')) || '';
 
     const catalog = await this.get(`/novel/${id}/catalog`, `${this.webSite}/novel/${id}.html`);
     const links = await this.querySelectorAll(catalog, 'li.chapter-li a.chapter-li-a');
@@ -142,21 +170,61 @@ export default class extends Extension {
     return {
       title,
       cover,
-      desc: author ? `作者: ${author}\n\n${desc}` : desc,
+      desc,
+      authors: author ? [{ name: author, url: authorUrl }] : [],
       episodes: [{ title: '章節', urls: chapters }],
+    };
+  }
+
+  async comments(workUrl, chapterUrl, page) {
+    // Every numbered sub-page belongs to the same chapter comment thread.
+    const chapter = chapterUrl.match(/\/novel\/(\d+)\/(\d+)(?:_\d+)?\.html(?:[?#].*)?$/);
+    if (!chapter || chapter[1] !== this.novelId(workUrl)) throw new Error('无效的章节地址');
+    const referer = this.mobileUrl(`/novel/${chapter[1]}/${chapter[2]}.html`);
+    const response = await this.request('/comment/php/api.php?action=get_list', {
+      method: 'post',
+      headers: {
+        'User-Agent': MOBILE_UA,
+        Referer: referer,
+        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      data: `catid=${chapter[1]}&cmtid=${chapter[2]}&pageIndex=${page}&pageSize=20&query=all`,
+    });
+    const body = typeof response === 'string' ? JSON.parse(response) : response;
+    if (body.err_msg !== 'success' || !Array.isArray(body.data) ||
+        String(body.cmtid) !== chapter[2] || String(body.catid) !== chapter[1]) {
+      throw new Error('站点未返回本章评论，请稍后重试');
+    }
+    return {
+      comments: body.data.map((comment) => {
+        const blocks = this.htmlToBlocks(comment.saytext || '', referer);
+        return {
+          id: String(comment.plid),
+          username: comment.plusername || '匿名读者',
+          text: blocks.filter((block) => typeof block === 'string').join('\n'),
+          images: blocks.filter((block) => block.type === 'image').map((block) => block.url),
+          time: comment.formattime || '',
+          likes: Number(comment.zcnum) || 0,
+          spoiler: Number(comment.ispoiler) === 1,
+        };
+      }),
+      hasMore: Number(body.hasmore) === 1 || page < Number(body.pageTotal),
+      total: Number(body.total) || 0,
+      headers: { Referer: referer, 'User-Agent': MOBILE_UA },
     };
   }
 
   // Pull text and illustrations out of the chapter body in document order.
   // The container id has changed across site revisions, so try the known ones
   // and prefer whichever yields the most content.
-  async extractBlocks(html, into) {
+  async extractBlocks(html, into, pageUrl) {
     const selectors = ['#acontent', '#TextContent', '.read-content', '#content', '.acontent'];
     let best = [];
     for (const selector of selectors) {
       const container = await this.querySelector(html, selector);
       if (!container) continue;
-      const blocks = this.htmlToBlocks(await container.content, `${this.webSite}/`);
+      const blocks = this.htmlToBlocks(await container.content, pageUrl);
       if (blocks.length > best.length) best = blocks;
     }
     if (best.length) {
@@ -176,56 +244,54 @@ export default class extends Extension {
     const catalogUrl = `${this.webSite}/novel/${id}/catalog`;
     const content = [];
 
-    let current = url;
+    let current = this.mobileUrl(url);
     let referer = catalogUrl;
     let subtitle = '';
     // Chapters continue onto "<chapter>_<n>.html" pages; follow them until the
     // next link leaves this chapter.
+    const visited = new Set();
+    const chapterOf = (u) => {
+      const m = u.match(/\/novel\/(\d+)\/(\d+)(?:_\d+)?\.html(?:[?#].*)?$/);
+      return m ? `${m[1]}/${m[2]}` : '';
+    };
+    const chapter = chapterOf(current);
+    if (!chapter) throw new Error('无效的章节地址');
     for (let i = 0; i < 30; i++) {
+      if (visited.has(current)) throw new Error('站点分页出现循环，未能加载完整章节');
+      visited.add(current);
       // The site rate-limits bursts (HTTP 429), and one chapter can span many
       // sub-pages, so pace the walk instead of firing them back to back.
       if (i > 0) await this.sleep(700);
 
-      const html = await this.get(current, referer);
+      const html = await this.get(current, referer, true);
       if (!subtitle) {
         const titleEl = await this.querySelector(html, '#atitle');
         if (titleEl) subtitle = (await titleEl.text).trim();
       }
-      await this.extractBlocks(html, content);
+      const pageBlocks = [];
+      await this.extractBlocks(html, pageBlocks, current);
+      if (!pageBlocks.length || pageBlocks.some(
+        (block) => typeof block === 'string' && INCOMPLETE_BODY.test(block)
+      )) {
+        // Never cache a preview as if it were a complete, offline-ready chapter.
+        throw new Error('站点仍未加载完整正文，请稍后重试');
+      }
+      content.push(...pageBlocks);
 
-      const match = html.match(/url_next:'([^']+)'/);
+      const match = html.match(/\burl_next\s*:\s*['"]([^'"]+)['"]/);
       if (!match) break;
-      const next = match[1];
-      const chapterOf = (u) => {
-        const m = u.match(/\/novel\/\d+\/(\d+)(?:_\d+)?\.html/);
-        return m ? m[1] : '';
-      };
-      if (!next || chapterOf(next) !== chapterOf(current)) break;
-      referer = this.absoluteUrl(this.webSite + '/', current);
+      const next = this.mobileUrl(match[1]);
+      if (chapterOf(next) !== chapter) break;
+      if (i === 29) throw new Error('本章分页过多，未能加载完整章节');
+      referer = current;
       current = next;
-    }
-
-    // The site serves a cut-down page to clients it does not trust: the text
-    // stops mid-sentence with its own marker and every illustration is
-    // withheld (the only <img> left is an ad banner). Say so rather than
-    // presenting half a chapter as if it were whole.
-    const truncated = content.some(
-      (block) =>
-        typeof block === 'string' &&
-        /內容加載失敗|内容加载失败|更換瀏覽器|更换浏览器/.test(block)
-    );
-    if (truncated) {
-      content.push(
-        '⚠ 本章内容被站点截断：哔哩轻小说对非浏览器客户端只返回部分正文，' +
-          '并且不下发插图。这不是本地解析失败，重试也不会有更多内容。'
-      );
     }
 
     return {
       content,
       subtitle,
       // Illustrations, when a chapter does carry them, are hotlink-protected.
-      headers: { Referer: `${this.webSite}/`, 'User-Agent': MOBILE_UA },
+      headers: { Referer: this.mobileUrl(url), 'User-Agent': MOBILE_UA },
     };
   }
 }

@@ -1,6 +1,6 @@
 // ==MiruExtension==
 // @name         Project Gutenberg
-// @version      v1.0.0
+// @version      v1.1.0
 // @author       FusionReader
 // @lang         all
 // @license      MIT
@@ -41,9 +41,14 @@ export default class extends Extension {
     return '';
   }
 
+  async searchAuthor(author, page) {
+    const res = await this.request(`/books/?search=${encodeURIComponent(author.name)}&page=${page}`);
+    return this.mapBooks({ results: (res.results || []).filter((book) =>
+      (book.authors || []).some((a) => a.name.toLowerCase() === author.name.toLowerCase())) });
+  }
+
   async detail(url) {
     const book = await this.request(`/books/${url}`);
-    const authors = (book.authors || []).map((a) => a.name).join(', ');
     const summary = (book.summaries || [])[0] || '';
     const textUrl = this.textUrlOf(book);
     const episodes = [];
@@ -53,7 +58,8 @@ export default class extends Extension {
     return {
       title: book.title,
       cover: (book.formats || {})['image/jpeg'] || '',
-      desc: `${authors ? '作者: ' + authors + '\n\n' : ''}${summary}`,
+      desc: summary,
+      authors: (book.authors || []).map((author) => ({ name: author.name })),
       episodes,
     };
   }
