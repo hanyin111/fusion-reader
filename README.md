@@ -126,7 +126,15 @@ export default class extends Extension {
 
 ## 架构说明
 
-iOS/macOS 使用 JavaScriptCore，其他平台使用 QuickJS。运行时兼容两种引擎的异步返回值编码，并为每个 Apple 平台扩展单独注册原生回调，避免多个插件之间串线。GitHub Actions 的 iOS 构建会先运行模拟器测试，覆盖全部内置扩展初始化、多插件并发、浏览/搜索、评论、切换和失败重试，再生成未签名 IPA。
+iOS/macOS 使用 JavaScriptCore，其他平台使用 QuickJS。每个 Apple 平台扩展单独注册原生回调，避免多个插件之间串线；异步结果保留在 JS 上下文中，不把未保护的原生对象指针带过 Dart 异步等待。关闭扩展时先取消未完成的调用和轮询，再释放引擎。设置页显示安装包的真实版本号和构建号。
+
+GitHub Actions 的 iOS 构建会先运行模拟器测试，覆盖全部内置扩展初始化、多插件与同插件并发、内存回收、超时恢复、请求中关闭和重新启用扩展、浏览/搜索、正文和评论，再生成未签名 IPA。macOS 构建还会用相同的 JavaScriptCore 后端运行 AOT 编译的回归测试：
+
+```bash
+flutter drive --profile -d macos --target integration_test/extension_runtime_test.dart --driver test_driver/extension_runtime_test.dart
+```
+
+模拟器和 macOS 验证不能代替 iPhone 实机的联网阅读测试。
 
 Mihon 插件是 Android APK（Dalvik 字节码），技术上无法在 Windows/iOS 等平台加载，因此本项目与 Miru 一样采用跨平台 JS 扩展方案，并保持与 Miru 扩展格式互通。
 

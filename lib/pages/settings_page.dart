@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/network.dart';
 import '../services/offline_cache.dart';
@@ -12,6 +13,7 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
   late final TextEditingController _proxyCtrl =
       TextEditingController(text: Storage.proxy);
 
@@ -127,16 +129,23 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 24),
           Text('关于', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('FusionReader 聚阅 v1.0.0',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  SizedBox(height: 8),
-                  Text('漫画 / 小说 / 动画 三合一聚合阅读器\n'
+                  FutureBuilder<PackageInfo>(
+                    future: _packageInfo,
+                    builder: (context, snapshot) => Text(
+                      snapshot.hasData
+                          ? 'FusionReader 聚阅 v${snapshot.data!.version} (${snapshot.data!.buildNumber})'
+                          : 'FusionReader 聚阅',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('漫画 / 小说 / 动画 三合一聚合阅读器\n'
                       '· 统一书架：三种类型内容放在同一书架\n'
                       '· Miru 兼容的 JS 扩展系统，可从 URL 安装新源\n'
                       '· 全平台支持：Windows / Android / iOS / macOS / Linux\n\n'

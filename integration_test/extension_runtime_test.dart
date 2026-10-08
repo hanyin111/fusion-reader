@@ -1,12 +1,16 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_js/javascriptcore/binding/js_base.dart'
+    show jSGarbageCollect;
 import 'package:fusion_reader/models/models.dart';
 import 'package:fusion_reader/pages/explore_page.dart';
 import 'package:fusion_reader/services/extension_manager.dart';
 import 'package:fusion_reader/services/extension_runtime.dart';
+import 'package:fusion_reader/services/apple_js_runtime.dart';
 import 'package:fusion_reader/services/network.dart';
 import 'package:fusion_reader/services/storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -41,6 +45,7 @@ export default class extends Extension {
   }
   async search(keyword, page) {
     if (keyword === 'fail') throw new Error('可读的脚本错误');
+    if (keyword === 'slow') await this.sleep(300);
     const html = await this.request('/' + this.package + '?q=' + encodeURIComponent(keyword));
     const el = await this.querySelector(html, '.title');
     return [{title:await el.text,url:'/' + this.package + '/search/' + page}];
@@ -69,6 +74,54 @@ Future<void> waitForText(WidgetTester tester, String text) async {
 void main() {
   debugPrint('Runtime test: entering integration test');
   isolateLinovelibTestStorage();
+  if (Platform.isIOS || Platform.isMacOS) {
+    testWidgets(
+      'Apple promises survive garbage collection and recover after timeout',
+      (tester) async {
+        await tester.runAsync(() async {
+          final runtime = AppleJsRuntime();
+          try {
+            final calls = List.generate(
+              12,
+              (i) => runtime.invoke(
+                'new Promise(resolve => setTimeout(() => resolve("result $i"), 50))',
+                timeout: const Duration(seconds: 2),
+              ),
+            );
+            jSGarbageCollect(runtime.context.pointer);
+            expect(
+              await Future.wait(calls),
+              List.generate(12, (i) => 'result $i'),
+            );
+            await expectLater(
+              runtime.invoke(
+                'new Promise(() => {})',
+                timeout: const Duration(milliseconds: 30),
+              ),
+              throwsA(isA<TimeoutException>()),
+            );
+            expect(
+              await runtime.invoke(
+                'Promise.resolve("after timeout")',
+                timeout: const Duration(seconds: 2),
+              ),
+              'after timeout',
+            );
+            await expectLater(
+              runtime.invoke(
+                'Promise.reject(new Error("脚本拒绝"))',
+                timeout: const Duration(seconds: 2),
+              ),
+              throwsA(isA<StateError>()),
+            );
+          } finally {
+            runtime.dispose();
+          }
+          debugPrint('Runtime test: Apple GC and timeout checks passed');
+        });
+      },
+    );
+  }
   testWidgets(
     'all sources load, and multiple JS contexts browse/search independently',
     (tester) async {
@@ -111,6 +164,12 @@ void main() {
         expect(lists[1].single.url, '/runtime_beta/2');
         expect(lists[0].single.title, '运行测试甲 正文');
         expect(lists[1].single.title, '运行测试乙 正文');
+        final sameContext = await Future.wait([
+          first.latest(10),
+          first.latest(11),
+        ]);
+        expect(sameContext[0].single.url, '/runtime_alpha/10');
+        expect(sameContext[1].single.url, '/runtime_alpha/11');
         expect((await first.detail('/work')).desc, '1');
         expect((await first.watch('/chapter'))['content'], [
           '中文 "引号" 🌸',
@@ -164,6 +223,23 @@ void main() {
         }
         // The newest context has been released; the older ones must still work.
         expect((await second.latest(5)).single.url, '/runtime_beta/5');
+        // Reproduce switching off a source while its async bridge is pending.
+        // QuickJS retains its existing behavior; Apple must cancel before free.
+        if (Platform.isIOS || Platform.isMacOS) {
+          final pending = second.search('slow', 1);
+          final cancelled = expectLater(
+            pending,
+            throwsA(isA<ExtensionException>()),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 30));
+          await manager.setDisabled('runtime_beta', true);
+          await cancelled;
+          await Future<void>.delayed(const Duration(milliseconds: 400));
+          expect((await first.latest(12)).single.url, '/runtime_alpha/12');
+          await manager.setDisabled('runtime_beta', false);
+          expect((await second.latest(6)).single.url, '/runtime_beta/6');
+          debugPrint('Runtime test: disabling a pending source passed');
+        }
         debugPrint('Runtime test: native bridges and reload checks passed');
       });
 

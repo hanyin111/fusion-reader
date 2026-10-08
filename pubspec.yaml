@@ -2,7 +2,7 @@ name: fusion_reader
 description: "FusionReader (聚阅) — manga / novel / anime aggregate reader with Miru-compatible JS extensions."
 publish_to: 'none'
 
-version: 1.3.1+5
+version: 1.3.2+6
 
 environment:
   sdk: ^3.12.2
@@ -13,7 +13,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
 
-  # JS extension engine (QuickJS on desktop/mobile)
+  # JS extension engine (JavaScriptCore on iOS/macOS, QuickJS elsewhere)
   flutter_js: ^0.8.4
   # Execute dynamic chapter pages in a real mobile browser context.
   flutter_inappwebview: ^6.1.5
@@ -31,6 +31,7 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.4
+  package_info_plus: ^9.0.1
 
   # Video playback (Windows/Linux/macOS/Android/iOS)
   media_kit: ^1.1.11

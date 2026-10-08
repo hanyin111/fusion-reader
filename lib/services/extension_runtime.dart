@@ -194,14 +194,24 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     final rt = _rt;
     if (rt == null) throw ExtensionException(meta.package, 'runtime not initialized');
     final expr = '__invoke(${jsonEncode(method)}, ${jsonEncode(jsonEncode(args))})';
-    final promise = await rt.evaluateAsync(expr);
-    rt.executePendingJob();
     // Browser-rendered chapters may have many sequential sub-pages.
     final timeout = meta.package == 'linovelib' && method == 'watch'
         ? const Duration(minutes: 5)
         : const Duration(seconds: 120);
-    final settled = await rt.handlePromise(promise, timeout: timeout);
-    return decodeExtensionResult(settled.stringResult,
+    final String raw;
+    if (rt is AppleJsRuntime) {
+      try {
+        raw = await rt.invoke(expr, timeout: timeout);
+      } catch (error) {
+        throw ExtensionException(meta.package, '$method() $error');
+      }
+    } else {
+      final promise = await rt.evaluateAsync(expr);
+      rt.executePendingJob();
+      final settled = await rt.handlePromise(promise, timeout: timeout);
+      raw = settled.stringResult;
+    }
+    return decodeExtensionResult(raw,
         package: meta.package, method: method);
   }
 

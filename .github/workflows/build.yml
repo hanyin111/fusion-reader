@@ -97,6 +97,9 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+      - name: Test Apple runtime with AOT compilation
+        timeout-minutes: 15
+        run: flutter drive --profile -d macos --target integration_test/extension_runtime_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
       - run: flutter build macos --release
       - name: Zip app bundle
         run: ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/fusion_reader.app" FusionReader-macos.zip
