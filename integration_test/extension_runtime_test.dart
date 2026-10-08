@@ -67,6 +67,7 @@ Future<void> waitForText(WidgetTester tester, String text) async {
 }
 
 void main() {
+  debugPrint('Runtime test: entering integration test');
   isolateLinovelibTestStorage();
   testWidgets(
     'all sources load, and multiple JS contexts browse/search independently',
@@ -79,11 +80,13 @@ void main() {
       late ExtensionService first;
       late ExtensionService second;
       await tester.runAsync(() async {
+        debugPrint('Runtime test: initializing bundled extensions');
         await Storage.init();
         await manager.init();
         expect(manager.all.length, ExtensionManager.bundledPackages.length);
         expect(manager.loadErrors, isEmpty);
         expect(manager.all.every((service) => service.loaded), isTrue);
+        debugPrint('Runtime test: all bundled extensions initialized');
         for (final package in ExtensionManager.bundledPackages) {
           await manager.setDisabled(package, true);
         }
@@ -102,6 +105,7 @@ void main() {
         await manager.installFromScript(fixture('runtime_beta', '运行测试乙', url));
         first = manager.byPackage('runtime_alpha')!;
         second = manager.byPackage('runtime_beta')!;
+        debugPrint('Runtime test: checking concurrent native bridges');
         final lists = await Future.wait([first.latest(1), second.latest(2)]);
         expect(lists[0].single.url, '/runtime_alpha/1');
         expect(lists[1].single.url, '/runtime_beta/2');
@@ -160,19 +164,21 @@ void main() {
         }
         // The newest context has been released; the older ones must still work.
         expect((await second.latest(5)).single.url, '/runtime_beta/5');
+        debugPrint('Runtime test: native bridges and reload checks passed');
       });
 
+      debugPrint('Runtime test: checking browse and search');
       await tester.pumpWidget(
         const MaterialApp(
           home: Scaffold(body: ExploreTab(type: MediaType.novel)),
         ),
       );
       await tester.pump();
-    final initial = manager.byType(MediaType.novel).first.meta.name;
-    await waitForText(tester, '$initial 正文');
-    await tester.tap(find.widgetWithText(ChoiceChip, '运行测试甲'));
-    await tester.pump();
-    await waitForText(tester, '运行测试甲 正文');
+      final initial = manager.byType(MediaType.novel).first.meta.name;
+      await waitForText(tester, '$initial 正文');
+      await tester.tap(find.widgetWithText(ChoiceChip, '运行测试甲'));
+      await tester.pump();
+      await waitForText(tester, '运行测试甲 正文');
       await tester.tap(find.widgetWithText(ChoiceChip, '运行测试乙'));
       await tester.pump();
       await waitForText(tester, '运行测试乙 正文');
@@ -180,6 +186,7 @@ void main() {
       tester.widget<SearchBar>(find.byType(SearchBar)).onSubmitted!('查询');
       await tester.pump();
       await waitForText(tester, '运行测试乙 查询');
+      debugPrint('Runtime test: browse and search passed');
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(() async {
         first.dispose();

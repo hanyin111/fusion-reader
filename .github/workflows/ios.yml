@@ -1,0 +1,95 @@
+name: Verify and build iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Optional draft release tag (must point to this commit)'
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      release_tag:
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  ios:
+    runs-on: macos-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check draft release target
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+      - name: Prepare dependencies
+        run: |
+          # Several native plugins still use CocoaPods. Use one dependency path
+          # rather than fetching Swift packages before falling back to Pods.
+          flutter config --no-enable-swift-package-manager
+          flutter pub get
+      - name: Boot a clean iOS simulator
+        timeout-minutes: 6
+        run: |
+          mkdir -p build/verification
+          xcodebuild -version
+          xcrun simctl list runtimes available --json > build/verification/ios-runtimes.json
+          RUNTIME_ID=$(python3 -c 'import json; r=json.load(open("build/verification/ios-runtimes.json"))["runtimes"]; ios=[x for x in r if x["isAvailable"] and ".iOS-" in x["identifier"]]; print(max(ios, key=lambda x: tuple(map(int,x["version"].split("."))))["identifier"])')
+          DEVICE_TYPE=$(xcrun simctl list devicetypes --json | python3 -c 'import json,sys; d=json.load(sys.stdin)["devicetypes"]; print(next(x["identifier"] for x in reversed(d) if x["name"].startswith("iPhone") and "Pro Max" not in x["name"]))')
+          DEVICE_ID=$(xcrun simctl create 'FusionReader CI' "$DEVICE_TYPE" "$RUNTIME_ID")
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE_ID"
+          open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID"
+          xcrun simctl bootstatus "$DEVICE_ID" -b
+      - name: Test extension runtime on iOS simulator
+        timeout-minutes: 25
+        run: |
+          set -o pipefail
+          flutter test integration_test/extension_runtime_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded --verbose 2>&1 | tee build/verification/ios-runtime-test.log
+      - name: Capture simulator diagnostics
+        if: failure()
+        timeout-minutes: 2
+        run: |
+          xcrun simctl io "$DEVICE_ID" screenshot build/verification/ios-simulator.png || true
+          xcrun simctl spawn "$DEVICE_ID" log show --last 5m --style compact --predicate 'process == "Runner"' > build/verification/ios-app.log 2>&1 || true
+          mkdir -p build/verification/crashes
+          find ~/Library/Logs/DiagnosticReports -maxdepth 1 -name 'Runner*' -exec cp {} build/verification/crashes/ \; || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-runtime-diagnostics
+          path: build/verification/
+          retention-days: 7
+      # Unsigned build: sign for sideloading with your own certificate.
+      - name: Build iOS release
+        run: flutter build ios --release --no-codesign --no-pub
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/ios/iphoneos/Runner.app Payload/
+          zip -r FusionReader-ios-unsigned.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned
+          path: FusionReader-ios-unsigned.ipa
+      - name: Attach to draft release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" FusionReader-ios-unsigned.ipa --clobber

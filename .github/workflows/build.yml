@@ -111,36 +111,6 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" FusionReader-macos.zip --clobber
 
   ios:
-    runs-on: macos-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - name: Test extension runtime on iOS simulator
-        timeout-minutes: 20
-        run: |
-          DEVICE_ID=$(xcrun simctl list devices available --json | python3 -c 'import json,sys; devices=json.load(sys.stdin)["devices"]; print(next(d["udid"] for group in devices.values() for d in group if d["name"].startswith("iPhone")))')
-          xcrun simctl boot "$DEVICE_ID"
-          xcrun simctl bootstatus "$DEVICE_ID" -b
-          flutter test integration_test/extension_runtime_test.dart -d "$DEVICE_ID" --timeout 3m
-      # Unsigned build — sideload with AltStore/TrollStore or sign with your own certificate.
-      - run: flutter build ios --release --no-codesign
-      - name: Package unsigned ipa
-        run: |
-          mkdir -p Payload
-          cp -r build/ios/iphoneos/Runner.app Payload/
-          zip -r FusionReader-ios-unsigned.ipa Payload
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ios-unsigned
-          path: FusionReader-ios-unsigned.ipa
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" FusionReader-ios-unsigned.ipa --clobber
+    uses: ./.github/workflows/ios.yml
+    with:
+      release_tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
