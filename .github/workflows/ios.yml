@@ -49,8 +49,11 @@ jobs:
           mkdir -p build/verification
           xcodebuild -version
           xcrun simctl list runtimes available --json > build/verification/ios-runtimes.json
-          RUNTIME_ID=$(python3 -c 'import json; r=json.load(open("build/verification/ios-runtimes.json"))["runtimes"]; ios=[x for x in r if x["isAvailable"] and ".iOS-" in x["identifier"]]; print(max(ios, key=lambda x: tuple(map(int,x["version"].split("."))))["identifier"])')
-          DEVICE_TYPE=$(xcrun simctl list devicetypes --json | python3 -c 'import json,sys; d=json.load(sys.stdin)["devicetypes"]; print(next(x["identifier"] for x in reversed(d) if x["name"].startswith("iPhone") and "Pro Max" not in x["name"]))')
+          xcrun simctl list devices available --json > build/verification/ios-devices.json
+          # An advertised device type can require a newer runtime. Select a
+          # device/runtime pair that CoreSimulator already knows is compatible.
+          CONFIG=$(python3 -c 'import json; r=json.load(open("build/verification/ios-runtimes.json"))["runtimes"]; d=json.load(open("build/verification/ios-devices.json"))["devices"]; ios=sorted((x for x in r if x["isAvailable"] and ".iOS-" in x["identifier"]),key=lambda x: tuple(map(int,x["version"].split("."))),reverse=True); pair=next((x["identifier"],y["deviceTypeIdentifier"]) for x in ios for y in d.get(x["identifier"],[]) if y["name"].startswith("iPhone")); print(*pair)')
+          read -r RUNTIME_ID DEVICE_TYPE <<< "$CONFIG"
           DEVICE_ID=$(xcrun simctl create 'FusionReader CI' "$DEVICE_TYPE" "$RUNTIME_ID")
           echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$DEVICE_ID"
