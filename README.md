@@ -89,7 +89,7 @@ flutter build ios --release --no-codesign
 
 Windows 需要 Visual Studio C++、ATL 和 NuGet；Linux 需要 GTK、mpv、libsecret 开发依赖；iOS 需要 Xcode。真实来源的联网集成检查从独立仓库获取脚本，普通测试和 CI 运行时回归使用本地模拟脚本。
 
-GitHub Actions 构建 Android、iOS、Linux。Android 发布前检查固定签名、包名、版本及 ABI；iOS 先运行模拟器回归，再生成 IPA。Windows 本地构建后上传。正式发布流程确认所需安装包齐全，再公开新版本，并将旧发布改为草稿保留。macOS 的独立手动工作流保留，暂不参与正式发布。
+GitHub Actions 构建 Android、iOS、Linux。Android 发布前检查固定签名、包名、版本及 ABI；iOS 先运行模拟器回归，再生成 IPA。Windows 可本地构建上传，也可使用独立的 Windows 工作流。正式发布流程确认所需安装包齐全，再公开新版本，并将旧发布改为草稿保留。macOS 的独立手动工作流保留，暂不参与正式发布。
 
 账号服务地址通过 `FUSION_SYNC_URL` 构建参数注入，Actions 使用同名 Secret。Android 签名使用 `ANDROID_DEBUG_KEYSTORE_B64`，证书指纹保存在 `android/signing-certificate.sha256`；私钥和服务器凭据不提交。未配置同步地址的版本仍可阅读及使用 JSON 迁移。
 

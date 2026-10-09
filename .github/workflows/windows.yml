@@ -1,0 +1,89 @@
+name: Build Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing release tag to build'
+        type: string
+        required: true
+      platform_build_run:
+        description: 'Android/iOS/Linux build run to publish with'
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      FUSION_SYNC_URL: ${{ secrets.FUSION_SYNC_URL }}
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      PLATFORM_BUILD_RUN: ${{ inputs.platform_build_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+      - name: Verify tagged version
+        shell: pwsh
+        run: |
+          $version = ((Select-String -Path pubspec.yaml -Pattern '^version:').Line -replace '^version:\s*','').Split('+')[0].Trim()
+          if ($env:RELEASE_TAG -ne "v$version") { throw 'Release tag does not match app version' }
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+      - name: Ensure Visual Studio ATL component
+        shell: pwsh
+        run: |
+          $installerRoot = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer'
+          $vswhere = Join-Path $installerRoot 'vswhere.exe'
+          $atl = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.ATL -property installationPath
+          if (-not $atl) {
+            $installPath = & $vswhere -latest -products '*' -property installationPath
+            if (-not $installPath) { throw 'Visual Studio is unavailable' }
+            $arguments = @('modify', '--installPath', "`"$installPath`"", '--add', 'Microsoft.VisualStudio.Component.VC.ATL', '--quiet', '--norestart')
+            $operation = Start-Process -FilePath (Join-Path $installerRoot 'setup.exe') -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+            if ($operation.ExitCode -notin @(0,3010)) { throw 'ATL installation failed' }
+          }
+      - run: flutter pub get
+      - name: Build tagged Windows app
+        run: flutter build windows --release --no-pub --dart-define="FUSION_SYNC_URL=$env:FUSION_SYNC_URL"
+      - name: Package and verify release
+        shell: pwsh
+        run: |
+          $root = 'build/windows/x64/runner/Release'
+          if (Test-Path "$root/data/flutter_assets/assets/extensions") { throw 'Site plugins must not be bundled' }
+          $archive = "FusionReader-$env:RELEASE_VERSION-windows-x64.zip"
+          Compress-Archive -Path "$root/*" -DestinationPath $archive
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $archive))
+          try {
+            $names = @($zip.Entries.FullName | ForEach-Object { $_.Replace('\','/') })
+            if ('fusion_reader.exe' -notin $names -or 'data/app.so' -notin $names) { throw 'Incomplete Windows package' }
+          } finally { $zip.Dispose() }
+          Get-FileHash $archive -Algorithm SHA256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: FusionReader-*-windows-x64.zip
+      - name: Upload Windows package
+        shell: pwsh
+        run: gh release upload "$env:RELEASE_TAG" "FusionReader-$env:RELEASE_VERSION-windows-x64.zip" --clobber
+      - name: Trigger publication if the other platform builds have finished
+        shell: pwsh
+        run: |
+          $status = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:PLATFORM_BUILD_RUN" --jq .status
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect platform build' }
+          if ($status.Trim() -eq 'completed') {
+            gh workflow run publish.yml --repo "$env:GITHUB_REPOSITORY" --ref main -f "build_run_id=$env:PLATFORM_BUILD_RUN"
+            if ($LASTEXITCODE -ne 0) { throw 'Unable to request verified publication' }
+          }
