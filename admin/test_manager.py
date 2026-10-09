@@ -68,6 +68,12 @@ class UiTests(unittest.TestCase):
             root.update_idletasks()
             self.assertEqual(app.host.get(), '')
             self.assertEqual(app.password.get(), '')
+            self.assertEqual(app.proxy_mode.get(), '跟随系统代理')
+            self.assertEqual(str(app.proxy_mode_box['state']), 'readonly')
+            self.assertTrue(all(str(entry['state']) == 'disabled' for entry in app.proxy_entries))
+            app.proxy_mode.set('手动代理')
+            app.update_buttons()
+            self.assertTrue(all(str(entry['state']) == 'normal' for entry in app.proxy_entries))
             self.assertFalse(app.connected)
             app.render_invites({'items': [{'id': 'a' * 16, 'status': 'used', 'username': 'reader',
                 'createdAt': None, 'expiresAt': '2030-01-01T00:00:00Z', 'usedAt': '2026-01-01T00:00:00Z'}], 'next': None})

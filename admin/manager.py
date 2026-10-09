@@ -11,9 +11,11 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter.scrolledtext import ScrolledText
 
 from ssh_client import ConnectionSettings, RemoteManager, UnknownHost, safe_error
+from proxy_transport import ProxyError, ProxySettings
 
 
 STATES = {'unused': '未使用', 'used': '已使用', 'expired': '已过期', 'revoked': '已撤销'}
+CONNECTION_MODES = {'跟随系统代理': 'system', '手动代理': 'manual', '直连': 'direct'}
 
 
 def display_time(value):
@@ -36,7 +38,7 @@ class ManagerApp:
         self.buttons = []
         self.invites, self.users, self.generated = {}, {}, []
         self.invite_next = self.user_next = None
-        root.title('聚阅 · 账号管理')
+        root.title('聚阅 · 账号管理（代理修复版）')
         root.geometry('1120x780')
         root.minsize(960, 680)
         root.protocol('WM_DELETE_WINDOW', self.close)
@@ -76,6 +78,10 @@ class ManagerApp:
             button.configure(state='normal' if allowed else 'disabled')
         for entry in self.connection_entries:
             entry.configure(state='disabled' if self.busy or self.connected else 'normal')
+        editable = not self.busy and not self.connected
+        self.proxy_mode_box.configure(state='readonly' if editable else 'disabled')
+        for entry in self.proxy_entries:
+            entry.configure(state='normal' if editable and self.proxy_mode.get() == '手动代理' else 'disabled')
 
     def connection_panel(self, parent):
         frame = ttk.LabelFrame(parent, text='服务器连接', padding=12)
@@ -99,6 +105,20 @@ class ManagerApp:
         key_entry.grid(row=3, column=0, columnspan=4, sticky='ew', padx=(0, 12), pady=(4, 0))
         self.connection_entries.append(key_entry)
         self.button(frame, '选择私钥', self.choose_key, connection=True).grid(row=3, column=4, columnspan=2, sticky='w')
+        self.proxy_mode = tk.StringVar(value='跟随系统代理')
+        self.proxy_host, self.proxy_port = tk.StringVar(value='127.0.0.1'), tk.StringVar(value='7890')
+        ttk.Label(frame, text='连接方式').grid(row=4, column=0, sticky='w', pady=(12, 4))
+        self.proxy_mode_box = ttk.Combobox(frame, textvariable=self.proxy_mode, values=tuple(CONNECTION_MODES), state='readonly', width=20)
+        self.proxy_mode_box.grid(row=5, column=0, sticky='w', padx=(0, 12))
+        self.proxy_mode_box.bind('<<ComboboxSelected>>', lambda _: self.update_buttons())
+        ttk.Label(frame, text='HTTP / 混合代理地址').grid(row=4, column=1, columnspan=2, sticky='w', pady=(12, 4))
+        proxy_host_entry = ttk.Entry(frame, textvariable=self.proxy_host, width=25)
+        proxy_host_entry.grid(row=5, column=1, columnspan=2, sticky='ew', padx=(0, 12))
+        ttk.Label(frame, text='代理端口').grid(row=4, column=3, sticky='w', pady=(12, 4))
+        proxy_port_entry = ttk.Entry(frame, textvariable=self.proxy_port, width=8)
+        proxy_port_entry.grid(row=5, column=3, sticky='w')
+        self.proxy_entries = [proxy_host_entry, proxy_port_entry]
+        ttk.Label(frame, text='默认读取系统已开启的代理；仅有自动代理脚本时请填写手动代理。', foreground='#52617a').grid(row=6, column=0, columnspan=6, sticky='w', pady=(6, 0))
         frame.columnconfigure(0, weight=1)
 
     def tree(self, parent, columns):
@@ -197,8 +217,14 @@ class ManagerApp:
 
     def connect(self):
         try:
+            mode = CONNECTION_MODES.get(self.proxy_mode.get(), '')
+            try:
+                proxy_port = int(self.proxy_port.get()) if mode == 'manual' else 7890
+            except ValueError:
+                raise ProxyError('代理端口必须在 1 到 65535 之间。') from None
+            proxy = ProxySettings(mode, self.proxy_host.get().strip(), proxy_port)
             settings = ConnectionSettings(self.host.get().strip(), int(self.port.get()),
-                                          self.username.get().strip(), self.password.get(), self.key.get().strip())
+                                          self.username.get().strip(), self.password.get(), self.key.get().strip(), proxy)
             settings.validate()
         except Exception as error:
             messagebox.showerror('连接信息', safe_error(error), parent=self.root)

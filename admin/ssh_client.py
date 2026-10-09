@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import json
 import os
@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 
 import paramiko
+from proxy_transport import ProxyError, ProxySettings, open_tunnel
 
 
 SERVICE_COMMAND = ('/opt/fusion-reader-sync/.venv/bin/python '
@@ -40,6 +41,7 @@ class ConnectionSettings:
     username: str
     password: str = ''
     key_filename: str = ''
+    proxy: ProxySettings = field(default_factory=ProxySettings)
 
     def validate(self):
         if not isinstance(self.host, str) or not re.fullmatch(r'[a-zA-Z0-9_.:\-]{1,253}', self.host) or self.host.startswith('-'):
@@ -52,6 +54,7 @@ class ConnectionSettings:
             raise ManagerError('找不到选择的私钥文件。')
         if not self.key_filename and not self.password:
             raise ManagerError('请填写 SSH 密码或选择私钥。')
+        self.proxy.validate()
 
 
 class VerifyHost(paramiko.MissingHostKeyPolicy):
@@ -88,13 +91,18 @@ class RemoteManager:
         if self.known_hosts.is_file():
             client.load_host_keys(str(self.known_hosts))
         client.set_missing_host_key_policy(VerifyHost(approved))
+        proxy_socket = None
         try:
+            proxy = settings.proxy.resolve()
+            if proxy is not None:
+                proxy_socket = open_tunnel(proxy, settings.host, settings.port)
             client.connect(settings.host, port=settings.port, username=settings.username,
                            password=settings.password or None,
                            key_filename=settings.key_filename or None,
                            look_for_keys=False, allow_agent=False, timeout=12,
                            banner_timeout=15, auth_timeout=15,
-                           passphrase=settings.password if settings.key_filename else None)
+                           passphrase=settings.password if settings.key_filename else None,
+                           sock=proxy_socket)
             if approved is not None:
                 self.known_hosts.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
                 client.save_host_keys(str(self.known_hosts))
@@ -107,6 +115,8 @@ class RemoteManager:
                 raise ManagerError('服务器管理功能版本不兼容，请先更新服务端。')
         except Exception:
             client.close()
+            if proxy_socket is not None:
+                proxy_socket.close()
             self.client = None
             raise
 
@@ -147,7 +157,7 @@ class RemoteManager:
 
 
 def safe_error(error):
-    if isinstance(error, ManagerError):
+    if isinstance(error, (ManagerError, ProxyError)):
         return str(error)
     if isinstance(error, paramiko.BadHostKeyException):
         return '服务器指纹与已信任记录不同，已停止连接。请先核对是否更换了服务器密钥。'
