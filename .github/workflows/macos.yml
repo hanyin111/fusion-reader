@@ -1,0 +1,128 @@
+name: macOS validation and package
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: 'Source commit to validate and package'
+        required: true
+        default: '750f48080fa898224a14058386301a88caa2db4d'
+      release_tag:
+        description: 'Existing draft release for the verified package'
+        required: true
+        default: 'v1.3.8'
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.2'
+          channel: stable
+          cache: true
+      - name: Prepare dependencies and record toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          sw_vers
+          uname -m
+          xcodebuild -version
+          flutter --version
+          flutter pub get
+      - name: Test Apple runtime with AOT compilation and launch diagnostics
+        id: runtime
+        continue-on-error: true
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          flutter drive --verbose --profile -d macos \
+            --target integration_test/extension_runtime_test.dart \
+            --driver test_driver/extension_runtime_test.dart --no-pub \
+            2>&1 | tee diagnostics/runtime.txt
+      - name: Inspect native launch if the runtime test failed
+        if: steps.runtime.outcome == 'failure'
+        run: |
+          set +e
+          APP=build/macos/Build/Products/Profile/fusion_reader.app
+          xcodebuild -workspace macos/Runner.xcworkspace -scheme Runner \
+            -configuration Profile -showBuildSettings > diagnostics/build-settings.txt 2>&1
+          grep -E 'CODE_SIGN|DEVELOPMENT_TEAM|ENABLE_HARDENED|ARCHS =|SDKROOT =' diagnostics/build-settings.txt || true
+          codesign --verify --deep --strict --verbose=4 "$APP" > diagnostics/signature-verification.txt 2>&1
+          cat diagnostics/signature-verification.txt
+          codesign -d --verbose=4 --entitlements :- "$APP" > diagnostics/signature-details.txt 2>&1
+          cat diagnostics/signature-details.txt
+          find "$APP/Contents/Frameworks" -maxdepth 2 \( -name '*.dylib' -o -name '*.framework' \) -print > diagnostics/frameworks.txt
+          cat diagnostics/frameworks.txt
+          otool -L "$APP/Contents/MacOS/fusion_reader" > diagnostics/native-dependencies.txt
+          "$APP/Contents/MacOS/fusion_reader" > diagnostics/direct-launch.txt 2>&1 &
+          LAUNCH_PID=$!
+          sleep 8
+          if kill -0 "$LAUNCH_PID" 2>/dev/null; then
+            echo 'Direct launch remained alive for 8 seconds.' | tee -a diagnostics/direct-launch.txt
+            kill "$LAUNCH_PID"
+          else
+            wait "$LAUNCH_PID"
+            echo "Direct launch exit status: $?" | tee -a diagnostics/direct-launch.txt
+          fi
+          cat diagnostics/direct-launch.txt
+          /usr/bin/log show --last 3m --style compact --predicate \
+            'process == "fusion_reader" OR process == "amfid" OR process == "sandboxd"' \
+            > diagnostics/system-launch.txt 2>&1
+          tail -n 120 diagnostics/system-launch.txt
+          find "$HOME/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports \
+            -type f -name 'fusion_reader*' -exec cp {} diagnostics/ \; 2>/dev/null
+          for report in diagnostics/fusion_reader*; do
+            if [ -f "$report" ]; then
+              echo "Crash report: $report"
+              head -n 150 "$report"
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-launch-diagnostics
+          path: diagnostics/
+      - name: Require native runtime test success
+        if: steps.runtime.outcome != 'success'
+        run: exit 1
+      - name: Test history and bundled serif font
+        timeout-minutes: 10
+        run: flutter drive --profile -d macos --target integration_test/history_font_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
+      - name: Test library import and export
+        timeout-minutes: 10
+        run: flutter drive --profile -d macos --target integration_test/library_transfer_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
+      - name: Test native account token storage
+        timeout-minutes: 10
+        run: flutter drive --profile -d macos --target integration_test/account_storage_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
+      - name: Build and verify release bundle
+        env:
+          FUSION_SYNC_URL: ${{ secrets.FUSION_SYNC_URL }}
+        run: |
+          set -euo pipefail
+          flutter build macos --release --no-pub --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
+          codesign --verify --deep --strict --verbose=2 build/macos/Build/Products/Release/fusion_reader.app
+          ditto -c -k --sequesterRsrc --keepParent build/macos/Build/Products/Release/fusion_reader.app FusionReader-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: FusionReader-macos.zip
+      - name: Attach verified package to existing draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          IS_DRAFT=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)
+          if [ "$IS_DRAFT" != 'true' ]; then
+            echo '::error::This workflow attaches only to an existing draft release.'
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" FusionReader-macos.zip --clobber
