@@ -85,9 +85,15 @@ class AndroidSigningTest(unittest.TestCase):
                 checks.check_signer(self.signature(), certificate)
 
     def test_all_architecture_version_codes_are_checked(self):
-        for abi, offset in checks.ABI_OFFSETS.items():
-            result = checks.check_manifest(self.manifest(code=offset + 11, abi=abi), abi, "1.3.7", 11)
-            self.assertEqual(result["versionCode"], offset + 11)
+        # Independent values from Flutter's ABI_VERSION mapping and CI APKs.
+        # Do not derive expectations from the implementation under test.
+        for abi, code in [("armeabi-v7a", 1011), ("arm64-v8a", 2011), ("x86_64", 4011)]:
+            result = checks.check_manifest(self.manifest(code=code, abi=abi), abi, "1.3.7", 11)
+            self.assertEqual(result["versionCode"], code)
+
+    def test_reserved_x86_offset_is_not_used_for_x86_64(self):
+        with self.assertRaises(ValueError):
+            checks.check_manifest(self.manifest(code=3011, abi="x86_64"), "x86_64", "1.3.7", 11)
 
     def test_wrong_package_architecture_or_downgrade_are_rejected(self):
         for output in [self.manifest(package="other.app"), self.manifest(code=2010),

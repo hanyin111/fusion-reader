@@ -14,7 +14,8 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parent.parent
 PACKAGE = "app.fusionreader.fusion_reader"
-ABI_OFFSETS = {"armeabi-v7a": 1000, "arm64-v8a": 2000, "x86_64": 3000}
+# Flutter reserves 3000 for the removed x86 ABI; x86_64 uses 4000.
+ABI_OFFSETS = {"armeabi-v7a": 1000, "arm64-v8a": 2000, "x86_64": 4000}
 
 
 def check_signer(output, expected):
