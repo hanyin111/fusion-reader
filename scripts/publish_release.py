@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import subprocess
 from urllib.request import Request, urlopen
 
 
@@ -15,10 +16,24 @@ def api(path, method='GET', data=None):
         return json.load(response)
 
 
+def releases(repository):
+    page = 1
+    while True:
+        items = api(f'repos/{repository}/releases?per_page=100&page={page}')
+        yield from items
+        if len(items) < 100:
+            break
+        page += 1
+
+
 def publish(repository, tag, version):
     if tag != 'v' + version or not re.fullmatch(r'\d+\.\d+\.\d+', version):
         raise ValueError('Release tag must match the app version')
-    release = api(f'repos/{repository}/releases/tags/{tag}')
+    # GitHub's tag endpoint can return 404 for drafts. The authenticated list
+    # includes drafts and lets us select the exact tag before touching assets.
+    release = next((item for item in releases(repository) if item['tag_name'] == tag), None)
+    if release is None:
+        raise ValueError('Release draft was not found')
     required = {f'FusionReader-{version}-windows-x64.zip',
         *(f'FusionReader-{version}-android-{abi}.apk' for abi in ('arm64-v8a', 'armeabi-v7a', 'x86_64')),
         'FusionReader-linux-x64.tar.gz', 'FusionReader-ios-unsigned.ipa'}
@@ -33,19 +48,30 @@ def publish(repository, tag, version):
         {'draft': False, 'prerelease': False, 'make_latest': 'true'})
     print('Published stable release ' + tag)
     # Preserve every asset and tag; only remove older releases from public lists.
-    page = 1
-    while True:
-        previous = api(f'repos/{repository}/releases?per_page=100&page={page}')
-        for old in previous:
-            if old['id'] != release['id'] and not old['draft']:
-                api(f'repos/{repository}/releases/{old["id"]}', 'PATCH', {'draft': True})
-                print('Archived as draft: ' + old['tag_name'])
-        if len(previous) < 100:
-            break
-        page += 1
+    for old in list(releases(repository)):
+        if old['id'] != release['id'] and not old['draft']:
+            api(f'repos/{repository}/releases/{old["id"]}', 'PATCH', {'draft': True})
+            print('Archived as draft: ' + old['tag_name'])
+
+
+def verified_build(repository, run_id):
+    run = api(f'repos/{repository}/actions/runs/{run_id}')
+    tag = run['head_branch']
+    if run['status'] != 'completed' or not re.fullmatch(r'v\d+\.\d+\.\d+', tag):
+        raise ValueError('A completed version-tag build is required')
+    jobs = api(f'repos/{repository}/actions/runs/{run_id}/jobs?per_page=100')['jobs']
+    results = {job['name']: job['conclusion'] for job in jobs}
+    if any(results.get(name) != 'success' for name in ('android', 'linux', 'ios / ios')):
+        raise ValueError('Android, Linux and iOS must all pass before publication')
+    commit = subprocess.check_output(['git', 'rev-parse', tag + '^{commit}'], text=True).strip()
+    if commit != run['head_sha']:
+        raise ValueError('Build commit and release tag differ')
+    spec = subprocess.check_output(['git', 'show', tag + ':pubspec.yaml'], text=True)
+    version = re.search(r'^version:\s*(\d+\.\d+\.\d+)', spec, re.M)[1]
+    return tag, version
 
 
 if __name__ == '__main__':
-    from pathlib import Path
-    version = re.search(r'^version:\s*(\d+\.\d+\.\d+)', Path('pubspec.yaml').read_text(), re.M)[1]
-    publish(os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_REF_NAME'], version)
+    repository = os.environ['GITHUB_REPOSITORY']
+    tag, version = verified_build(repository, os.environ['FUSION_BUILD_RUN_ID'])
+    publish(repository, tag, version)

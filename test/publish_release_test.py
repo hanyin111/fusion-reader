@@ -21,7 +21,7 @@ class PublishReleaseTests(unittest.TestCase):
 
     def test_missing_or_empty_package_never_publishes_or_archives(self):
         for assets in [self.assets[:-1], [dict(a, size=0) for a in self.assets]]:
-            with patch.object(publisher, 'api', return_value=dict(self.release, assets=assets)) as api:
+            with patch.object(publisher, 'api', return_value=[dict(self.release, assets=assets)]) as api:
                 with self.assertRaises(ValueError):
                     publisher.publish('owner/app', 'v1.4.0', '1.4.0')
                 self.assertEqual(api.call_count, 1)
@@ -30,7 +30,7 @@ class PublishReleaseTests(unittest.TestCase):
         older = {'id': 1, 'tag_name': 'v1.3.2', 'draft': False, 'assets': [{'name': 'old.apk'}]}
         already_hidden = {'id': 2, 'tag_name': 'v1.3.8', 'draft': True}
         feed = io.BytesIO(json.dumps({'schemaVersion': 1, 'extensions': [{'package': 'fixture'}]}).encode())
-        with patch.object(publisher, 'api', side_effect=[self.release, {}, [self.release, older, already_hidden], {}]) as api, patch.object(publisher, 'urlopen', return_value=feed):
+        with patch.object(publisher, 'api', side_effect=[[self.release], {}, [self.release, older, already_hidden], {}]) as api, patch.object(publisher, 'urlopen', return_value=feed):
             publisher.publish('owner/app', 'v1.4.0', '1.4.0')
         mutations = [call for call in api.call_args_list if len(call.args) > 1]
         self.assertEqual(mutations[0].args[0], 'repos/owner/app/releases/3')
@@ -44,10 +44,23 @@ class PublishReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 publisher.publish('owner/app', 'v1.3.8', '1.4.0')
             api.assert_not_called()
-        with patch.object(publisher, 'api', return_value=self.release) as api, patch.object(publisher, 'urlopen', return_value=io.BytesIO(b'{"schemaVersion":1,"extensions":[]}')):
+        with patch.object(publisher, 'api', return_value=[self.release]) as api, patch.object(publisher, 'urlopen', return_value=io.BytesIO(b'{"schemaVersion":1,"extensions":[]}')):
             with self.assertRaises(ValueError):
                 publisher.publish('owner/app', 'v1.4.0', '1.4.0')
             self.assertEqual(api.call_count, 1)
+
+    def test_only_completed_tag_builds_with_every_platform_passed_are_accepted(self):
+        run = {'status': 'completed', 'head_branch': 'v1.4.0', 'head_sha': 'abc'}
+        jobs = {'jobs': [{'name': n, 'conclusion': 'success'} for n in ('android', 'linux', 'ios / ios')]}
+        with patch.object(publisher, 'api', side_effect=[run, jobs]), patch.object(publisher.subprocess, 'check_output', side_effect=['abc\n', 'version: 1.4.0+13\n']):
+            self.assertEqual(publisher.verified_build('owner/app', 1), ('v1.4.0', '1.4.0'))
+        jobs['jobs'][2]['conclusion'] = 'failure'
+        with patch.object(publisher, 'api', side_effect=[run, jobs]), self.assertRaises(ValueError):
+            publisher.verified_build('owner/app', 1)
+        with patch.object(publisher, 'api', return_value=dict(run, status='in_progress')), self.assertRaises(ValueError):
+            publisher.verified_build('owner/app', 1)
+        with patch.object(publisher, 'api', return_value=dict(run, head_branch='main')), self.assertRaises(ValueError):
+            publisher.verified_build('owner/app', 1)
 
 
 if __name__ == '__main__':

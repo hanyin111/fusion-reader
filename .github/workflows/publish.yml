@@ -1,0 +1,36 @@
+name: Publish stable release
+
+on:
+  workflow_run:
+    workflows: ['Build Android / iOS / Linux']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: 'Completed version-tag build run ID'
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: stable-release-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test publication safeguards
+        run: python3 -m unittest discover -s test -p publish_release_test.py
+      - name: Publish verified packages and archive older releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FUSION_BUILD_RUN_ID: ${{ github.event.workflow_run.id || inputs.build_run_id }}
+        run: python3 scripts/publish_release.py
