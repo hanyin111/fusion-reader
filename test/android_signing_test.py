@@ -21,6 +21,37 @@ class AndroidSigningTest(unittest.TestCase):
     def test_fixed_certificate_accepts_case_insensitive_sdk_output(self):
         self.assertEqual(checks.check_signer(self.signature(PIN.upper()), PIN), PIN)
 
+    def sdk_range_signature(self, minimum, maximum, certificate=PIN):
+        return f"Signer (minSdkVersion={minimum}, maxSdkVersion={maximum}) certificate SHA-256 digest: {certificate}\n"
+
+    def test_v31_certificate_uses_sdk_ranges_in_official_tool_output(self):
+        output = "Verifies\nVerified using v3.1 scheme (APK Signature Scheme v3.1): true\nNumber of signers: 1\n"
+        output += self.sdk_range_signature(33, 2147483647)
+        output += self.sdk_range_signature(28, 32)
+        self.assertEqual(checks.check_signer(output, PIN), PIN)
+
+    def test_different_certificate_in_either_sdk_range_is_rejected(self):
+        other = "0" * 64
+        for current, original in [(PIN, other), (other, PIN)]:
+            output = self.sdk_range_signature(33, 2147483647, current)
+            output += self.sdk_range_signature(28, 32, original)
+            with self.assertRaises(ValueError):
+                checks.check_signer(output, PIN)
+
+    def test_v31_multiple_signers_are_rejected(self):
+        output = "Number of signers: 2\n" + self.sdk_range_signature(33, 2147483647)
+        with self.assertRaises(ValueError):
+            checks.check_signer(output, PIN)
+
+    def test_source_stamp_is_not_the_apk_signing_identity(self):
+        output = self.sdk_range_signature(33, 2147483647)
+        output += "Source Stamp Signer certificate SHA-256 digest: " + "0" * 64 + "\n"
+        self.assertEqual(checks.check_signer(output, PIN), PIN)
+
+    def test_v31_dev_release_label_is_supported(self):
+        output = f"Signer (minSdkVersion=33 (dev release=true), maxSdkVersion=2147483647) certificate SHA-256 digest: {PIN}\n"
+        self.assertEqual(checks.check_signer(output, PIN), PIN)
+
     def test_historical_temporary_signers_are_rejected(self):
         for certificate in [
             "667ccc106ae4437d92c6f7869d5afc9a22208cb7c334ae5dfa383534c814fcfe",
