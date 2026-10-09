@@ -42,6 +42,8 @@ jobs:
             echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
           fi
       - run: flutter pub get
+      - name: Test library backup and history
+        run: flutter test --no-pub test/library_backup_test.dart test/history_test.dart
       - run: flutter build apk --release --split-per-abi
       - name: Rename APKs
         run: |
@@ -103,6 +105,9 @@ jobs:
       - name: Test history and bundled serif font
         timeout-minutes: 10
         run: flutter drive --profile -d macos --target integration_test/history_font_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
+      - name: Test library import and export
+        timeout-minutes: 10
+        run: flutter drive --profile -d macos --target integration_test/library_transfer_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
       - run: flutter build macos --release
       - name: Zip app bundle
         run: ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/fusion_reader.app" FusionReader-macos.zip

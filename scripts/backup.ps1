@@ -1,6 +1,7 @@
 param([ValidatePattern('^[a-z0-9-]+$')][string]$Label = 'manual')
 
 $ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $backupRoot = Join-Path $workspace 'backups'
