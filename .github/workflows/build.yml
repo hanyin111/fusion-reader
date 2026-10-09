@@ -5,6 +5,12 @@ name: Build Linux / macOS / iOS / Android
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platforms to build'
+        type: choice
+        options: [all, android]
+        default: all
   push:
     branches: [main]
     tags: ['v*']
@@ -28,23 +34,47 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Restore and verify fixed Android signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo '::error::ANDROID_DEBUG_KEYSTORE_B64 is required. Refusing to generate a temporary signing key.'
+            exit 1
+          fi
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/fusion-reader-signing.keystore"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$KEY_FILE"
+          keytool -exportcert -alias androiddebugkey -keystore "$KEY_FILE" \
+            -storepass android -file "$RUNNER_TEMP/fusion-reader-signing.cer"
+          ACTUAL=$(sha256sum "$RUNNER_TEMP/fusion-reader-signing.cer" | cut -d' ' -f1)
+          EXPECTED=$(tr -d '\r\n' < android/signing-certificate.sha256)
+          echo "Signing certificate SHA-256: $ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo '::error::The signing key does not match the pinned certificate. Refusing to publish an incompatible update.'
+            exit 1
+          fi
+          echo "FUSION_ANDROID_KEYSTORE=$KEY_FILE" >> "$GITHUB_ENV"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - name: Restore shared debug keystore
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
-        run: |
-          if [ -n "$KEYSTORE_B64" ]; then
-            mkdir -p ~/.android
-            echo "$KEYSTORE_B64" | base64 -d > ~/.android/debug.keystore
-          fi
       - run: flutter pub get
+      - name: Test APK publication checks
+        run: python3 -m unittest discover -s test -p android_signing_test.py
       - name: Test library backup and history
         run: flutter test --no-pub test/library_backup_test.dart test/history_test.dart
       - run: flutter build apk --release --split-per-abi
+      - name: Verify final APK signatures and versions
+        run: |
+          BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+          python3 scripts/verify_android_apks.py --build-tools "$BUILD_TOOLS"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-signature-verification
+          path: build/verification/android-signatures.json
       - name: Rename APKs
         run: |
           VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d+ -f1 | tr -d ' \r')
@@ -63,6 +93,7 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
 
   linux:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -90,6 +121,7 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" FusionReader-linux-x64.tar.gz --clobber
 
   macos:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,6 +154,7 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" FusionReader-macos.zip --clobber
 
   ios:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
     uses: ./.github/workflows/ios.yml
     with:
       release_tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}

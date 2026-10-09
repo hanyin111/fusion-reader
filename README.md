@@ -67,6 +67,10 @@ Windows 需要 Microsoft Edge WebView2 运行时。Android、iOS、macOS 已接�
 
 ### 编译应用
 
+安卓发布包使用固定签名密钥。CI 从 `ANDROID_DEBUG_KEYSTORE_B64` 恢复已有密钥，以 `FUSION_ANDROID_KEYSTORE` 明确指定文件；本地默认使用 `~/.android/debug.keystore`。缺少密钥或证书与 `android/signing-certificate.sha256` 不一致时拒绝构建，不会自动创建新发布密钥。私钥不提交到仓库。
+
+发布前会使用 Android SDK 的 `apksigner` 验证 APK 签名，并检查包名、版本号和 ABI。v1.3.4 及部分旧版曾使用构建环境临时生成的签名，无法被固定签名版本覆盖安装；从这些旧版迁移时，先导出书架与历史，再重装一次并导入。之后同一架构的后续版本使用同一密钥，可正常升级。
+
 前置：Flutter 3.44+（stable channel）。
 
 ```bash
