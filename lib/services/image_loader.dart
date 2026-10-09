@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import 'network.dart';
+import 'source_image_codec.dart';
 
 /// Bridges flutter_cache_manager onto our per-source Dio clients so cover art
 /// and manga pages follow the same proxy routing as the extension that
@@ -19,33 +20,51 @@ class _DioFileService extends FileService {
       : (netMode == 'direct' ? Network.direct : Network.proxied);
 
   @override
-  Future<FileServiceResponse> get(String url,
-      {Map<String, String>? headers}) async {
+  Future<FileServiceResponse> get(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
     final response = await _dio.get<ResponseBody>(
-      url,
+      SourceImageCodec.requestUrl(package, url),
       options: Options(
         responseType: ResponseType.stream,
-        headers: {...?headers},
+        headers: SourceImageCodec.headersFor(package, headers),
         validateStatus: (s) => s != null && s < 500,
       ),
     );
-    return _DioResponse(response, url);
+    Uint8List? processed;
+    if (response.statusCode == 200 &&
+        SourceImageCodec.episodeId(package, url) != null) {
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in response.data!.stream) {
+        builder.add(chunk);
+      }
+      processed = await SourceImageCodec.decode(
+        package,
+        url,
+        builder.takeBytes(),
+      );
+    }
+    return _DioResponse(response, url, processed);
   }
 }
 
 class _DioResponse implements FileServiceResponse {
   final Response<ResponseBody> _response;
   final String _url;
+  final Uint8List? _processed;
   final DateTime _received = DateTime.now();
 
-  _DioResponse(this._response, this._url);
+  _DioResponse(this._response, this._url, this._processed);
 
   @override
-  Stream<List<int>> get content =>
-      _response.data?.stream.map((e) => e.toList()) ?? const Stream.empty();
+  Stream<List<int>> get content => _processed != null
+      ? Stream.value(_processed)
+      : _response.data?.stream.map((e) => e.toList()) ?? const Stream.empty();
 
   @override
   int? get contentLength {
+    if (_processed != null) return _processed.length;
     final v = _response.headers.value('content-length');
     return v == null ? null : int.tryParse(v);
   }
@@ -55,6 +74,14 @@ class _DioResponse implements FileServiceResponse {
 
   @override
   String get fileExtension {
+    if (_processed != null &&
+        _processed.length >= 8 &&
+        _processed[0] == 137 &&
+        _processed[1] == 80 &&
+        _processed[2] == 78 &&
+        _processed[3] == 71) {
+      return '.png';
+    }
     final type = _response.headers.value('content-type') ?? '';
     if (type.contains('png')) return '.png';
     if (type.contains('webp')) return '.webp';
@@ -95,23 +122,30 @@ class SourceImageCache {
     );
   }
 
-  /// Fetch raw bytes through the source's route (used by descrambling readers).
+  /// Fetch display-ready bytes through the source's route, restoring pages
+  /// when the URL carries a supported processing context.
   static Future<Uint8List> fetchBytes(
     String package,
     String url, {
     Map<String, String>? headers,
     String? netMode,
+    CancelToken? cancelToken,
   }) async {
     final dio = netMode == null
         ? Network.forPackage(package)
         : (netMode == 'direct' ? Network.direct : Network.proxied);
     final response = await dio.get<List<int>>(
-      url,
+      SourceImageCodec.requestUrl(package, url),
       options: Options(
         responseType: ResponseType.bytes,
-        headers: headers,
+        headers: SourceImageCodec.headersFor(package, headers),
       ),
+      cancelToken: cancelToken,
     );
-    return Uint8List.fromList(response.data ?? const []);
+    return SourceImageCodec.decode(
+      package,
+      url,
+      Uint8List.fromList(response.data ?? const []),
+    );
   }
 }

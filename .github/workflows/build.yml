@@ -24,6 +24,7 @@ permissions:
 
 env:
   FLUTTER_VERSION: '3.44.2'
+  FUSION_SYNC_URL: ${{ secrets.FUSION_SYNC_URL }}
 
 jobs:
   android:
@@ -64,9 +65,9 @@ jobs:
       - run: flutter pub get
       - name: Test APK publication checks
         run: python3 -m unittest discover -s test -p android_signing_test.py
-      - name: Test library backup and history
-        run: flutter test --no-pub test/library_backup_test.dart test/history_test.dart
-      - run: flutter build apk --release --split-per-abi
+      - name: Test library, readers and source image decoding
+        run: flutter test --no-pub test/library_backup_test.dart test/history_test.dart test/novel_pagination_test.dart test/novel_reader_paging_test.dart test/offline_catalog_test.dart test/extension_crypto_test.dart test/source_image_codec_test.dart test/account_service_test.dart test/account_api_test.dart test/account_page_test.dart
+      - run: flutter build apk --release --split-per-abi --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
       - name: Verify final APK signatures and versions
         run: |
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
@@ -101,14 +102,14 @@ jobs:
       - name: Install Linux build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv
+          sudo apt-get install -y ninja-build libgtk-3-dev libmpv-dev mpv libsecret-1-dev libjsoncpp-dev
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter pub get
-      - run: flutter build linux --release
+      - run: flutter build linux --release --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
       - name: Tar release
         run: tar -czf FusionReader-linux-x64.tar.gz -C build/linux/x64/release/bundle .
       - uses: actions/upload-artifact@v4
@@ -141,7 +142,10 @@ jobs:
       - name: Test library import and export
         timeout-minutes: 10
         run: flutter drive --profile -d macos --target integration_test/library_transfer_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
-      - run: flutter build macos --release
+      - name: Test native account token storage
+        timeout-minutes: 10
+        run: flutter drive --profile -d macos --target integration_test/account_storage_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
+      - run: flutter build macos --release --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
       - name: Zip app bundle
         run: ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/fusion_reader.app" FusionReader-macos.zip
       - uses: actions/upload-artifact@v4
@@ -157,5 +161,6 @@ jobs:
   ios:
     if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
     uses: ./.github/workflows/ios.yml
+    secrets: inherit
     with:
       release_tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}

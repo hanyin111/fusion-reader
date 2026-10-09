@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../services/extension_manager.dart';
-import '../services/network.dart';
 import '../services/storage.dart';
 import '../widgets/media_card.dart';
 
@@ -183,7 +182,7 @@ class ExtensionsPage extends StatelessWidget {
                 return const Padding(
                   padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
                   child: Text(
-                    '扩展为 Miru 兼容的 JS 脚本。标有 ⚠ 的扩展在当前网络下加载失败（可能需要代理）。',
+                    '扩展为 Miru 兼容的 JS 脚本。标有 ⚠ 的扩展加载失败。',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 );
@@ -242,23 +241,6 @@ class ExtensionsPage extends StatelessWidget {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Routing matters per source: mainland sites reject foreign
-                    // proxy exits, blocked sites need one.
-                    DropdownButton<NetMode>(
-                      value: Network.modeFor(meta.package),
-                      underline: const SizedBox(),
-                      isDense: true,
-                      style: Theme.of(context).textTheme.labelSmall,
-                      items: [
-                        for (final m in NetMode.values)
-                          DropdownMenuItem(value: m, child: Text(m.label)),
-                      ],
-                      onChanged: (m) async {
-                        if (m == null) return;
-                        await Storage.setExtNetMode(meta.package, m.name);
-                        await manager.reload(meta.package);
-                      },
-                    ),
                     if (Storage.extSettingSchemas(meta.package).isNotEmpty)
                       IconButton(
                         tooltip: '扩展设置（帐号等）',

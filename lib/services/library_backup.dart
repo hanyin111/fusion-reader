@@ -66,6 +66,119 @@ class LibraryBackup {
     return bytes;
   }
 
+  /// The last accepted cloud snapshot is the common ancestor. A removal on
+  /// either device wins over an unchanged copy on the other device.
+  static LibraryBackup reconcile({
+    required LibraryBackup local,
+    required LibraryBackup remote,
+    LibraryBackup? baseline,
+  }) {
+    final localFavorites = {for (final item in local.favorites) item.key: item};
+    final remoteFavorites = {
+      for (final item in remote.favorites) item.key: item,
+    };
+    final localHistory = {for (final item in local.history) item.key: item};
+    final remoteHistory = {for (final item in remote.history) item.key: item};
+    final removedFavorites = {
+      for (final item in baseline?.favorites ?? <MediaItem>[])
+        if (!localFavorites.containsKey(item.key) ||
+            !remoteFavorites.containsKey(item.key))
+          item.key,
+    };
+    final removedHistory = {
+      for (final item in baseline?.history ?? <HistoryRecord>[])
+        if (!localHistory.containsKey(item.key) ||
+            !remoteHistory.containsKey(item.key))
+          item.key,
+    };
+    final favorites = {...localFavorites};
+    for (final entry in remoteFavorites.entries) {
+      final current = favorites[entry.key];
+      favorites[entry.key] = current == null
+          ? entry.value
+          : _metadata(current, entry.value);
+    }
+    favorites.removeWhere((key, _) => removedFavorites.contains(key));
+    final history = {...localHistory};
+    for (final entry in remoteHistory.entries) {
+      final current = history[entry.key];
+      history[entry.key] = current == null
+          ? entry.value
+          : _mergeHistory(current, entry.value);
+    }
+    history.removeWhere((key, _) => removedHistory.contains(key));
+    return LibraryBackup._(
+      exportedAt: DateTime.now().toUtc(),
+      favorites: favorites.values,
+      history: history.values.map((record) {
+        final favorite = favorites[record.key];
+        return favorite == null
+            ? record
+            : record.copyWith(
+                item: _metadata(record.item ?? favorite, favorite),
+              );
+      }),
+      excludedLocalFavorites: local.excludedLocalFavorites,
+      excludedLocalHistory: local.excludedLocalHistory,
+    );
+  }
+
+  /// Replace only portable records after a validated cloud download. Local
+  /// files and their progress remain device-specific. Roll back both boxes
+  /// together if persistence fails, just as with manual imports.
+  Future<void> applySynchronized() async {
+    final favoriteBox = Storage.favoritesBox;
+    final historyBox = Storage.historyBox;
+    final favoriteWrites = {
+      for (final item in favorites.reversed) item.key: item.toJson(),
+    };
+    final historyWrites = {for (final item in history) item.key: item.toJson()};
+    final favoriteDeletes = favoriteBox.keys
+        .whereType<String>()
+        .where(
+          (key) => _package(key) != 'local' && !favoriteWrites.containsKey(key),
+        )
+        .toList();
+    final historyDeletes = historyBox.keys
+        .whereType<String>()
+        .where(
+          (key) => _package(key) != 'local' && !historyWrites.containsKey(key),
+        )
+        .toList();
+    final oldFavorites = {
+      for (final key in {...favoriteWrites.keys, ...favoriteDeletes})
+        key: favoriteBox.get(key),
+    };
+    final oldHistory = {
+      for (final key in {...historyWrites.keys, ...historyDeletes})
+        key: historyBox.get(key),
+    };
+    try {
+      await favoriteBox.deleteAll(favoriteDeletes);
+      await historyBox.deleteAll(historyDeletes);
+      await favoriteBox.putAll(favoriteWrites);
+      await historyBox.putAll(historyWrites);
+      await favoriteBox.flush();
+      await historyBox.flush();
+    } catch (_) {
+      await favoriteBox.deleteAll(
+        oldFavorites.keys.where((key) => oldFavorites[key] == null),
+      );
+      await historyBox.deleteAll(
+        oldHistory.keys.where((key) => oldHistory[key] == null),
+      );
+      await favoriteBox.putAll({
+        for (final e in oldFavorites.entries)
+          if (e.value != null) e.key: e.value,
+      });
+      await historyBox.putAll({
+        for (final e in oldHistory.entries)
+          if (e.value != null) e.key: e.value,
+      });
+      rethrow;
+    }
+  }
+
   /// All fields are checked before any storage write. Do not use the models'
   /// permissive extension parsers on data coming from an external file.
   static LibraryBackup decode(List<int> bytes) {
@@ -132,6 +245,7 @@ class LibraryBackup {
         episodeIndex: _integer(json, 'episodeIndex'),
         timestamp: _integer(json, 'timestamp', maxValue: 253402300799999),
         position: _integer(json, 'position', optional: true),
+        textOffset: _integer(json, 'textOffset', optional: true),
       );
       if (_package(key) == 'local') {
         excludedHistory++;
@@ -263,6 +377,7 @@ class LibraryBackup {
       groupIndex: progress.groupIndex,
       episodeIndex: progress.episodeIndex,
       position: progress.position,
+      textOffset: progress.textOffset,
       timestamp: newer.timestamp,
     );
   }

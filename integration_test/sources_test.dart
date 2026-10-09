@@ -93,7 +93,7 @@ void main() {
       for (final service in manager.enabled) {
         final pkg = service.meta.package;
         final type = service.meta.type;
-        final route = Network.modeFor(pkg).label +
+        final route = Network.modeFor(pkg).name +
             (Network.usesProxyFor(pkg) ? '(经代理)' : '(直连)');
         print('>>> testing $pkg [$route] ...');
         try {

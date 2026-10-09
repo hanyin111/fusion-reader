@@ -22,7 +22,18 @@ class Storage {
     _extSettings = await Hive.openBox('extension_settings');
     _disabled = await Hive.openBox('extensions_disabled');
     _local = await Hive.openBox('local_library');
-    await OfflineCache.init(await Hive.openBox('offline_manifests'));
+    // Removed network controls must not leave invisible connection overrides.
+    if (_settings.containsKey('proxy')) await _settings.delete('proxy');
+    await _extSettings.deleteAll(
+      _extSettings.keys
+          .whereType<String>()
+          .where((key) => key.endsWith('|__netmode'))
+          .toList(),
+    );
+    await OfflineCache.init(
+      await Hive.openBox('offline_manifests'),
+      await Hive.openBox('offline_catalogs'),
+    );
     // Recover metadata for old progress records using books already on disk.
     final knownItems = {
       for (final item in [...localItems(), ...favorites()]) item.key: item,
@@ -133,9 +144,6 @@ class Storage {
   static Future<void> clearHistory() => _history.clear();
 
   // ---- app settings ----
-  static String get proxy => _settings.get('proxy', defaultValue: '') as String;
-  static Future<void> setProxy(String v) => _settings.put('proxy', v);
-
   static dynamic setting(String key, {dynamic defaultValue}) =>
       _settings.get(key, defaultValue: defaultValue);
   static Future<void> setSetting(String key, dynamic value) =>
@@ -191,13 +199,4 @@ class Storage {
     }
     await _extSettings.put('$package|__schemas', list);
   }
-
-  // ---- per-extension network routing ----
-  // Null means "not overridden by the user"; the extension's own @network
-  // declaration (applied at load time) or the global default then applies.
-  static String? extNetMode(String package) =>
-      _extSettings.get('$package|__netmode') as String?;
-
-  static Future<void> setExtNetMode(String package, String mode) =>
-      _extSettings.put('$package|__netmode', mode);
 }

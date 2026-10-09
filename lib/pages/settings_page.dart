@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../services/network.dart';
 import '../services/offline_cache.dart';
-import '../services/storage.dart';
+import '../services/account_service.dart';
+import 'account_page.dart';
 import 'library_transfer_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -15,14 +15,11 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late final Future<PackageInfo> _packageInfo = PackageInfo.fromPlatform();
-  late final TextEditingController _proxyCtrl = TextEditingController(
-    text: Storage.proxy,
-  );
 
   @override
-  void dispose() {
-    _proxyCtrl.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    AccountService.instance.initialize();
   }
 
   @override
@@ -32,31 +29,22 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text('网络', style: Theme.of(context).textTheme.titleMedium),
+          Text('账号', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
-          TextField(
-            controller: _proxyCtrl,
-            decoration: InputDecoration(
-              labelText: 'HTTP 代理 (host:port)',
-              hintText: '例如 127.0.0.1:7890，留空则读取系统环境变量',
-              helperText:
-                  '当前生效: ${Network.resolvedProxy().isEmpty ? "无代理（直连）" : Network.resolvedProxy()}\n'
-                  '国内站点（樱花动漫、AGE等）走代理会被拒，请在「扩展」页把它们设为「强制直连」',
-              helperMaxLines: 3,
-              border: const OutlineInputBorder(),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.save),
-                tooltip: '保存',
-                onPressed: () async {
-                  await Storage.setProxy(_proxyCtrl.text.trim());
-                  Network.reload();
-                  if (context.mounted) {
-                    setState(() {});
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(const SnackBar(content: Text('代理设置已保存并生效')));
-                  }
-                },
+          ListenableBuilder(
+            listenable: AccountService.instance,
+            builder: (context, _) => Card(
+              child: ListTile(
+                leading: const Icon(Icons.cloud_sync_outlined),
+                title: const Text('账号与同步'),
+                subtitle: Text(
+                  AccountService.instance.session?.username ??
+                      '用激活码注册，手动同步书架和历史',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => const AccountPage())),
               ),
             ),
           ),

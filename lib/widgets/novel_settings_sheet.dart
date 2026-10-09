@@ -31,7 +31,8 @@ class NovelSettingsSheet extends StatefulWidget {
         maxHeight: MediaQuery.of(context).size.height * 0.62,
         maxWidth: 640,
       ),
-      builder: (_) => NovelSettingsSheet(settings: settings, onChanged: onChanged),
+      builder: (_) =>
+          NovelSettingsSheet(settings: settings, onChanged: onChanged),
     );
   }
 
@@ -59,7 +60,10 @@ class _NovelSettingsSheetState extends State<NovelSettingsSheet> {
   }) {
     return Row(
       children: [
-        SizedBox(width: 68, child: Text(label, style: const TextStyle(fontSize: 13))),
+        SizedBox(
+          width: 68,
+          child: Text(label, style: const TextStyle(fontSize: 13)),
+        ),
         Expanded(
           child: Slider(
             value: value.clamp(min, max),
@@ -71,22 +75,27 @@ class _NovelSettingsSheetState extends State<NovelSettingsSheet> {
         ),
         SizedBox(
           width: 46,
-          child: Text(display,
-              textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 12, fontFeatures: [])),
+          child: Text(
+            display,
+            textAlign: TextAlign.right,
+            style: const TextStyle(fontSize: 12, fontFeatures: []),
+          ),
         ),
       ],
     );
   }
 
   Widget _sectionLabel(String text) => Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 6),
-        child: Text(text,
-            style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.primary)),
-      );
+    padding: const EdgeInsets.only(top: 12, bottom: 6),
+    child: Text(
+      text,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: Theme.of(context).colorScheme.primary,
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -95,8 +104,10 @@ class _NovelSettingsSheetState extends State<NovelSettingsSheet> {
       children: [
         Row(
           children: [
-            const Text('阅读设置',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const Text(
+              '阅读设置',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
             const Spacer(),
             TextButton.icon(
               icon: const Icon(Icons.restart_alt, size: 18),
@@ -105,6 +116,32 @@ class _NovelSettingsSheetState extends State<NovelSettingsSheet> {
             ),
           ],
         ),
+
+        _sectionLabel('阅读模式'),
+        SegmentedButton<bool>(
+          segments: const [
+            ButtonSegment(
+              value: false,
+              label: Text('上下滚动'),
+              icon: Icon(Icons.view_day_outlined),
+            ),
+            ButtonSegment(
+              value: true,
+              label: Text('左右翻页'),
+              icon: Icon(Icons.auto_stories_outlined),
+            ),
+          ],
+          selected: {s.paged},
+          onSelectionChanged: (values) => _apply(() => s.paged = values.single),
+        ),
+        if (s.paged)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              '左右滑动或点击两侧翻页，点击中间显示菜单。',
+              style: TextStyle(fontSize: 12),
+            ),
+          ),
 
         _sectionLabel('文字'),
         _slider(
@@ -202,8 +239,10 @@ class _NovelSettingsSheetState extends State<NovelSettingsSheet> {
           children: [
             for (final font in ReaderFont.options)
               ChoiceChip(
-                label: Text(font.name,
-                    style: TextStyle(fontFamily: font.family, fontSize: 13)),
+                label: Text(
+                  font.name,
+                  style: TextStyle(fontFamily: font.family, fontSize: 13),
+                ),
                 selected: s.fontName == font.name,
                 onSelected: (_) => _apply(() => s.fontName = font.name),
               ),
@@ -263,10 +302,12 @@ class _ThemeSwatch extends StatelessWidget {
           children: [
             Text('文', style: TextStyle(color: foreground, fontSize: 18)),
             const SizedBox(height: 2),
-            Text(theme.name,
-                style: TextStyle(color: foreground, fontSize: 11),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis),
+            Text(
+              theme.name,
+              style: TextStyle(color: foreground, fontSize: 11),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
         ),
       ),

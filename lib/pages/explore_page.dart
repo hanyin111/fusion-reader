@@ -252,7 +252,7 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
             children: [
               const Icon(Icons.cloud_off, size: 48),
               const SizedBox(height: 12),
-              Text('加载失败（该源可能需要代理或暂时不可用）\n$_error',
+              Text('加载失败，请检查网络或稍后重试\n$_error',
                   maxLines: 6, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
               const SizedBox(height: 12),
               FilledButton(onPressed: _reset, child: const Text('重试')),

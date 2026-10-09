@@ -58,7 +58,7 @@ class BrowserLoader {
           ),
         );
       } else if (!Platform.isWindows && proxy.isNotEmpty) {
-        throw UnsupportedError('此设备的浏览器加载暂不支持应用内代理，请使用系统网络并清空应用内代理地址。');
+        throw UnsupportedError('此设备的浏览器不支持代理覆盖，请使用系统网络。');
       }
       return await _load(url, headers, selector, rejectPattern, proxy, timeout);
     } finally {

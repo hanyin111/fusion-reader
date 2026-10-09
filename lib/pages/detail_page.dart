@@ -29,13 +29,17 @@ class _DetailPageState extends State<DetailPage> {
   bool _descExpanded = false;
 
   MediaItem get _displayItem => MediaItem(
-        package: widget.item.package,
-        type: widget.item.type,
-        title: _detail?.title.isNotEmpty == true ? _detail!.title : widget.item.title,
-        url: widget.item.url,
-        cover: _detail?.cover.isNotEmpty == true ? _detail!.cover : widget.item.cover,
-        update: widget.item.update,
-      );
+    package: widget.item.package,
+    type: widget.item.type,
+    title: _detail?.title.isNotEmpty == true
+        ? _detail!.title
+        : widget.item.title,
+    url: widget.item.url,
+    cover: _detail?.cover.isNotEmpty == true
+        ? _detail!.cover
+        : widget.item.cover,
+    update: widget.item.update,
+  );
 
   @override
   void initState() {
@@ -45,22 +49,47 @@ class _DetailPageState extends State<DetailPage> {
 
   Future<void> _load() async {
     setState(() => _error = null);
+    // Show downloaded directories immediately, before a network timeout.
+    final cached = OfflineCache.readDetail(widget.item);
+    if (cached != null) _applyDetail(cached);
     try {
       await Storage.recordVisit(widget.item);
       final detail = await Sources.detail(widget.item);
       if (!mounted) return;
-      setState(() {
-        _detail = detail;
-        final h = Storage.historyOf(widget.item.key);
-        if (h != null && h.groupIndex < detail.episodes.length) {
-          _groupIndex = h.groupIndex;
-        }
-      });
+      _applyDetail(detail);
       await Storage.recordVisit(_displayItem);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
     }
+  }
+
+  void _applyDetail(MediaDetail detail) {
+    final history = Storage.historyOf(widget.item.key);
+    var selected = _groupIndex.clamp(
+      0,
+      detail.episodes.isEmpty ? 0 : detail.episodes.length - 1,
+    );
+    if (history != null) {
+      final preferred = history.groupIndex;
+      if (preferred >= 0 &&
+          preferred < detail.episodes.length &&
+          detail.episodes[preferred].urls.any(
+            (episode) => episode.url == history.episodeUrl,
+          )) {
+        selected = preferred;
+      } else {
+        final match = detail.episodes.indexWhere(
+          (group) =>
+              group.urls.any((episode) => episode.url == history.episodeUrl),
+        );
+        if (match >= 0) selected = match;
+      }
+    }
+    setState(() {
+      _detail = detail;
+      _groupIndex = selected;
+    });
   }
 
   Future<void> _openEpisode(int episodeIndex) async {
@@ -71,13 +100,25 @@ class _DetailPageState extends State<DetailPage> {
     switch (item.type) {
       case MediaType.manga:
         page = MangaReaderPage(
-            item: item, group: group, groupIndex: _groupIndex, index: episodeIndex);
+          item: item,
+          group: group,
+          groupIndex: _groupIndex,
+          index: episodeIndex,
+        );
       case MediaType.novel:
         page = NovelReaderPage(
-            item: item, group: group, groupIndex: _groupIndex, index: episodeIndex);
+          item: item,
+          group: group,
+          groupIndex: _groupIndex,
+          index: episodeIndex,
+        );
       case MediaType.anime:
         page = VideoPlayerPage(
-            item: item, group: group, groupIndex: _groupIndex, index: episodeIndex);
+          item: item,
+          group: group,
+          groupIndex: _groupIndex,
+          index: episodeIndex,
+        );
     }
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
     if (mounted) setState(() {});
@@ -86,7 +127,9 @@ class _DetailPageState extends State<DetailPage> {
   /// Per-episode cache control: download, show progress, or drop the copy.
   Widget _cacheButton(MediaEpisode ep) {
     // Locally imported media is already on disk — caching it would duplicate it.
-    if (LocalLibrary.isLocal(widget.item.package)) return const SizedBox.shrink();
+    if (LocalLibrary.isLocal(widget.item.package)) {
+      return const SizedBox.shrink();
+    }
 
     return ListenableBuilder(
       listenable: OfflineCache.instance,
@@ -96,7 +139,8 @@ class _DetailPageState extends State<DetailPage> {
 
         if (progress != null) {
           return IconButton(
-            tooltip: '${progress.label}  ${(progress.fraction * 100).round()}% · 点击取消',
+            tooltip:
+                '${progress.label}  ${(progress.fraction * 100).round()}% · 点击取消',
             icon: SizedBox(
               width: 20,
               height: 20,
@@ -112,8 +156,11 @@ class _DetailPageState extends State<DetailPage> {
         if (OfflineCache.has(widget.item.package, ep.url)) {
           return IconButton(
             tooltip: '已缓存，点击删除',
-            icon: Icon(Icons.download_done,
-                size: 20, color: Theme.of(context).colorScheme.primary),
+            icon: Icon(
+              Icons.download_done,
+              size: 20,
+              color: Theme.of(context).colorScheme.primary,
+            ),
             onPressed: () => OfflineCache.remove(widget.item.package, ep.url),
           );
         }
@@ -123,11 +170,16 @@ class _DetailPageState extends State<DetailPage> {
           icon: const Icon(Icons.download_outlined, size: 20),
           onPressed: () async {
             try {
-              await OfflineCache.instance.download(widget.item, ep);
+              await OfflineCache.instance.download(
+                _displayItem,
+                ep,
+                detail: _detail,
+              );
             } catch (e) {
               if (context.mounted) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text('缓存失败: $e')));
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('缓存失败: $e')));
               }
             }
           },
@@ -142,8 +194,9 @@ class _DetailPageState extends State<DetailPage> {
         .where((e) => !OfflineCache.has(widget.item.package, e.url))
         .toList();
     if (pending.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('本组内容都已缓存')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('本组内容都已缓存')));
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -152,9 +205,14 @@ class _DetailPageState extends State<DetailPage> {
         title: const Text('缓存全部'),
         content: Text('将缓存 ${pending.length} 项内容，可能占用较多空间和流量。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(c, true), child: const Text('开始')),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('开始'),
+          ),
         ],
       ),
     );
@@ -164,16 +222,21 @@ class _DetailPageState extends State<DetailPage> {
     for (final ep in pending) {
       if (!mounted) return;
       try {
-        await OfflineCache.instance.download(widget.item, ep);
+        await OfflineCache.instance.download(_displayItem, ep, detail: _detail);
       } catch (_) {
         failed++;
       }
     }
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(failed == 0
-              ? '已缓存 ${pending.length} 项'
-              : '完成，${pending.length - failed} 项成功，$failed 项失败')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            failed == 0
+                ? '已缓存 ${pending.length} 项'
+                : '完成，${pending.length - failed} 项成功，$failed 项失败',
+          ),
+        ),
+      );
     }
   }
 
@@ -193,8 +256,10 @@ class _DetailPageState extends State<DetailPage> {
               final fav = Storage.isFavorite(item.key);
               return IconButton(
                 tooltip: fav ? '从书架移除' : '加入书架',
-                icon: Icon(fav ? Icons.favorite : Icons.favorite_border,
-                    color: fav ? Colors.redAccent : null),
+                icon: Icon(
+                  fav ? Icons.favorite : Icons.favorite_border,
+                  color: fav ? Colors.redAccent : null,
+                ),
                 onPressed: () => Storage.toggleFavorite(_displayItem),
               );
             },
@@ -206,15 +271,19 @@ class _DetailPageState extends State<DetailPage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('加载失败\n$_error', textAlign: TextAlign.center, maxLines: 8),
+                  Text(
+                    '加载失败\n$_error',
+                    textAlign: TextAlign.center,
+                    maxLines: 8,
+                  ),
                   const SizedBox(height: 12),
                   FilledButton(onPressed: _load, child: const Text('重试')),
                 ],
               ),
             )
           : detail == null
-              ? const Center(child: CircularProgressIndicator())
-              : _buildDetail(detail, sourceName),
+          ? const Center(child: CircularProgressIndicator())
+          : _buildDetail(detail, sourceName),
     );
   }
 
@@ -236,7 +305,9 @@ class _DetailPageState extends State<DetailPage> {
                     width: 120,
                     height: 170,
                     child: SourceImage(
-                      url: detail.cover.isEmpty ? widget.item.cover : detail.cover,
+                      url: detail.cover.isEmpty
+                          ? widget.item.cover
+                          : detail.cover,
                       package: widget.item.package,
                       fit: BoxFit.cover,
                     ),
@@ -247,8 +318,10 @@ class _DetailPageState extends State<DetailPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(detail.title,
-                          style: Theme.of(context).textTheme.titleLarge),
+                      Text(
+                        detail.title,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
                       if (detail.authors.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
@@ -277,38 +350,53 @@ class _DetailPageState extends State<DetailPage> {
                           ),
                         ),
                       const SizedBox(height: 8),
-                      Wrap(spacing: 8, children: [
-                        Chip(
-                          label: Text(widget.item.type.label,
-                              style: const TextStyle(fontSize: 12, color: Colors.white)),
-                          backgroundColor: typeColor(widget.item.type),
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                        Chip(
-                          label: Text(sourceName, style: const TextStyle(fontSize: 12)),
-                          padding: EdgeInsets.zero,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ]),
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          Chip(
+                            label: Text(
+                              widget.item.type.label,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.white,
+                              ),
+                            ),
+                            backgroundColor: typeColor(widget.item.type),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          Chip(
+                            label: Text(
+                              sourceName,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 8),
                       if (group != null)
                         FilledButton.icon(
                           icon: const Icon(Icons.play_arrow),
-                          label: Text(history == null
-                              ? '开始${widget.item.type == MediaType.anime ? '观看' : '阅读'}'
-                              : '继续: ${history.episodeName}'),
+                          label: Text(
+                            history == null
+                                ? '开始${widget.item.type == MediaType.anime ? '观看' : '阅读'}'
+                                : '继续: ${history.episodeName}',
+                          ),
                           onPressed: () {
                             var idx = 0;
-                            if (history != null &&
-                                history.groupIndex == _groupIndex &&
-                                history.episodeIndex < group.urls.length) {
-                              idx = history.episodeIndex;
+                            if (history != null) {
+                              final match = group.urls.indexWhere(
+                                (episode) => episode.url == history.episodeUrl,
+                              );
+                              if (match >= 0) idx = match;
                             }
                             _openEpisode(idx);
                           },
                         ),
-                      if (Sources.commentScope(widget.item) == CommentScope.work)
+                      if (Sources.commentScope(widget.item) ==
+                          CommentScope.work)
                         CommentsButton(item: widget.item, showLabel: true),
                     ],
                   ),
@@ -337,12 +425,17 @@ class _DetailPageState extends State<DetailPage> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
-                Text('共 ${group?.urls.length ?? 0} 个章节/剧集',
-                    style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  '共 ${group?.urls.length ?? 0} 个章节/剧集',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const Spacer(),
                 if (group != null && !LocalLibrary.isLocal(widget.item.package))
                   TextButton.icon(
-                    icon: const Icon(Icons.download_for_offline_outlined, size: 18),
+                    icon: const Icon(
+                      Icons.download_for_offline_outlined,
+                      size: 18,
+                    ),
                     label: const Text('缓存全部'),
                     onPressed: () => _cacheAll(group),
                   ),
@@ -352,7 +445,9 @@ class _DetailPageState extends State<DetailPage> {
                     items: [
                       for (var i = 0; i < detail.episodes.length; i++)
                         DropdownMenuItem(
-                            value: i, child: Text(detail.episodes[i].title)),
+                          value: i,
+                          child: Text(detail.episodes[i].title),
+                        ),
                     ],
                     onChanged: (v) => setState(() => _groupIndex = v ?? 0),
                   ),
@@ -367,24 +462,27 @@ class _DetailPageState extends State<DetailPage> {
               itemCount: group.urls.length,
               itemBuilder: (context, i) {
                 final ep = group.urls[i];
-                final isLast = history != null &&
-                    history.groupIndex == _groupIndex &&
-                    history.episodeIndex == i;
+                final isLast = history?.episodeUrl == ep.url;
                 return ListTile(
                   dense: true,
                   visualDensity: VisualDensity.compact,
-                  title: Text(ep.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: isLast ? Theme.of(context).colorScheme.primary : null,
-                        fontWeight: isLast ? FontWeight.bold : null,
-                      )),
+                  title: Text(
+                    ep.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: isLast
+                          ? Theme.of(context).colorScheme.primary
+                          : null,
+                      fontWeight: isLast ? FontWeight.bold : null,
+                    ),
+                  ),
                   leading: isLast ? const Icon(Icons.bookmark, size: 18) : null,
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (Sources.commentScope(widget.item) == CommentScope.chapter)
+                      if (Sources.commentScope(widget.item) ==
+                          CommentScope.chapter)
                         CommentsButton(item: widget.item, episode: ep),
                       _cacheButton(ep),
                     ],

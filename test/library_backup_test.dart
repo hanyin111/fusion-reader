@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fusion_reader/models/models.dart';
 import 'package:fusion_reader/services/library_backup.dart';
+import 'package:fusion_reader/services/account_service.dart';
 import 'package:fusion_reader/services/storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -44,6 +45,73 @@ void main() {
     PathProviderPlatform.instance = originalPaths;
     await root.delete(recursive: true);
   });
+
+  test(
+    'paged novel offsets survive export, import and newer visit merges',
+    () async {
+      await Storage.saveHistory(progress(novel, 10).copyWith(textOffset: 731));
+      final backup = LibraryBackup.decode(
+        LibraryBackup.capture().encodeBytes(),
+      );
+      expect(backup.history.single.textOffset, 731);
+      await Storage.clearHistory();
+      await backup.merge();
+      expect(Storage.historyOf(novel.key)!.textOffset, 731);
+      await Storage.recordVisit(novel);
+      await backup.merge();
+      expect(Storage.historyOf(novel.key)!.textOffset, 731);
+      expect(HistoryRecord.fromJson(progress(novel, 1).toJson()).textOffset, 0);
+    },
+  );
+
+  test(
+    'cloud replacement removes remote records while preserving local file data',
+    () async {
+      const local = MediaItem(
+        package: 'local',
+        type: MediaType.novel,
+        title: '本地',
+        url: '/device/book.txt',
+      );
+      await Storage.toggleFavorite(local);
+      await Storage.saveHistory(progress(local, 500));
+      await Storage.toggleFavorite(novel);
+      await Storage.saveHistory(progress(novel, 100));
+      final all = LibraryBackup.capture();
+      await Storage.toggleFavorite(comic);
+      await Storage.saveHistory(progress(comic, 200));
+      await all.applySynchronized();
+      expect(
+        Storage.favorites().map((e) => e.key),
+        containsAll([novel.key, local.key]),
+      );
+      expect(Storage.isFavorite(comic.key), isFalse);
+      expect(Storage.historyOf(comic.key), isNull);
+      expect(Storage.historyOf(local.key)!.timestamp, 500);
+      expect(Storage.historyOf(novel.key)!.timestamp, 100);
+    },
+  );
+
+  test(
+    'accepted cloud ancestor persists through box reopening without credentials',
+    () async {
+      await Storage.toggleFavorite(novel);
+      final store = HiveAccountLibraryStore();
+      const owner = 'fixture-account';
+      final snapshot = LibraryBackup.capture();
+      final time = DateTime.utc(2026, 10, 9);
+      await store.saveBaseline(owner, AccountSyncState(snapshot, time));
+      await Hive.box('account_sync').close();
+      final restored = await HiveAccountLibraryStore().baseline(owner);
+      expect(restored!.snapshot.favorites.single.key, novel.key);
+      expect(restored.syncedAt, time);
+      expect(await store.baseline('other-account'), isNull);
+      expect(
+        Hive.box('account_sync').get(owner).toString(),
+        isNot(contains('token')),
+      );
+    },
+  );
 
   test(
     'cross-device round trip restores shelf ordering, visits and chapter positions',

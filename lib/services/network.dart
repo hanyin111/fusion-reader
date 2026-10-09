@@ -6,8 +6,6 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 
-import 'storage.dart';
-
 const kDefaultUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
     '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -18,13 +16,13 @@ const kDefaultUserAgent =
 /// while sites blocked in mainland China only work through one — so routing
 /// has to be decided per source, not globally.
 enum NetMode {
-  /// Follow the global proxy setting.
+  /// Follow the process environment, without application preferences.
   auto,
 
   /// Always bypass any proxy.
   direct,
 
-  /// Always go through the configured proxy.
+  /// Use the environment proxy when one is available.
   proxy;
 
   static NetMode fromString(String? s) {
@@ -37,29 +35,17 @@ enum NetMode {
         return NetMode.auto;
     }
   }
-
-  String get label {
-    switch (this) {
-      case NetMode.auto:
-        return '跟随全局';
-      case NetMode.direct:
-        return '强制直连';
-      case NetMode.proxy:
-        return '强制代理';
-    }
-  }
 }
 
 class Network {
   static Dio? _proxied;
   static Dio? _direct;
 
-  /// The proxy in use: explicit setting first, then environment variables.
+  /// Read the process environment; there is no application proxy setting.
   static String resolvedProxy() {
-    final manual = Storage.proxy.trim();
-    if (manual.isNotEmpty) return manual;
     final env = Platform.environment;
-    final raw = env['HTTPS_PROXY'] ??
+    final raw =
+        env['HTTPS_PROXY'] ??
         env['https_proxy'] ??
         env['HTTP_PROXY'] ??
         env['http_proxy'] ??
@@ -70,11 +56,8 @@ class Network {
   /// Defaults declared by extensions via `@network`, seeded at load time.
   static final Map<String, NetMode> declaredModes = {};
 
-  /// Resolve the effective mode for a source: user override beats the
-  /// extension's declared default, which beats plain auto.
+  /// Internal source compatibility defaults, with no stored user overrides.
   static NetMode modeFor(String package) {
-    final override = Storage.extNetMode(package);
-    if (override != null) return NetMode.fromString(override);
     return declaredModes[package] ?? NetMode.auto;
   }
 
@@ -100,7 +83,7 @@ class Network {
   static Dio get proxied => _proxied ??= _build(useProxy: true);
   static Dio get direct => _direct ??= _build(useProxy: false);
 
-  /// Drop cached clients so a changed proxy setting takes effect.
+  /// Drop cached clients and active connections.
   static void reload() {
     _proxied?.close(force: true);
     _direct?.close(force: true);
@@ -109,13 +92,15 @@ class Network {
   }
 
   static Dio _build({required bool useProxy}) {
-    final dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 20),
-      receiveTimeout: const Duration(seconds: 40),
-      headers: {'User-Agent': kDefaultUserAgent},
-      validateStatus: (s) => s != null && s < 400,
-      followRedirects: true,
-    ));
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 20),
+        receiveTimeout: const Duration(seconds: 40),
+        headers: {'User-Agent': kDefaultUserAgent},
+        validateStatus: (s) => s != null && s < 400,
+        followRedirects: true,
+      ),
+    );
     // Some sites gate content behind a session cookie handed out on an earlier
     // page view, so cookies have to persist across requests.
     dio.interceptors.add(CookieManager(CookieJar()));

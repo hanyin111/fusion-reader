@@ -13,8 +13,19 @@ class Sources {
 
   static Future<MediaDetail> detail(MediaItem item) async {
     if (LocalLibrary.isLocal(item.package)) return LocalLibrary.detail(item);
-    final service = await ExtensionManager.instance.ensureLoaded(item.package);
-    return service.detail(item.url);
+    try {
+      final service = await ExtensionManager.instance.ensureLoaded(
+        item.package,
+      );
+      final detail = await service.detail(item.url);
+      // Refresh catalogs for works downloaded with this or an older version.
+      await OfflineCache.saveDetail(item, detail);
+      return detail;
+    } catch (_) {
+      final cached = OfflineCache.readDetail(item);
+      if (cached != null) return cached;
+      rethrow;
+    }
   }
 
   static Future<Map> watch(MediaItem item, String episodeUrl) async {

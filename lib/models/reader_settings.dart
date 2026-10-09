@@ -12,7 +12,11 @@ class ReaderTheme {
 
   /// `null` colours mean "inherit from the app theme", which is the only way
   /// to keep the reader correct in both light and dark mode.
-  static const followApp = ReaderTheme('跟随应用', Color(0x00000000), Color(0x00000000));
+  static const followApp = ReaderTheme(
+    '跟随应用',
+    Color(0x00000000),
+    Color(0x00000000),
+  );
 
   bool get isFollowApp => background.a == 0 && text.a == 0;
 
@@ -27,10 +31,8 @@ class ReaderTheme {
     ReaderTheme('纯黑', Color(0xFF000000), Color(0xFFA9AFB5)),
   ];
 
-  static ReaderTheme byName(String name) => presets.firstWhere(
-        (t) => t.name == name,
-        orElse: () => followApp,
-      );
+  static ReaderTheme byName(String name) =>
+      presets.firstWhere((t) => t.name == name, orElse: () => followApp);
 }
 
 /// A selectable typeface. `family` of null falls back to the platform default.
@@ -46,10 +48,8 @@ class ReaderFont {
     ReaderFont('等宽', 'monospace'),
   ];
 
-  static ReaderFont byName(String name) => options.firstWhere(
-        (f) => f.name == name,
-        orElse: () => options.first,
-      );
+  static ReaderFont byName(String name) =>
+      options.firstWhere((f) => f.name == name, orElse: () => options.first);
 }
 
 /// Everything the novel reader lets the user tune, persisted as it changes.
@@ -65,6 +65,7 @@ class NovelReaderSettings {
   bool justify;
   String fontName;
   String themeName;
+  bool paged;
 
   NovelReaderSettings({
     required this.fontSize,
@@ -78,6 +79,7 @@ class NovelReaderSettings {
     required this.justify,
     required this.fontName,
     required this.themeName,
+    this.paged = false,
   });
 
   static const _defaults = {
@@ -97,22 +99,31 @@ class NovelReaderSettings {
           .toDouble();
 
   factory NovelReaderSettings.load() => NovelReaderSettings(
-        fontSize: _d('fontSize'),
-        lineHeight: _d('lineHeight'),
-        paragraphSpacing: _d('paragraphSpacing'),
-        horizontalPadding: _d('horizontalPadding'),
-        verticalPadding: _d('verticalPadding'),
-        letterSpacing: _d('letterSpacing'),
-        fontWeightIndex:
-            Storage.setting('novel_fontWeightIndex', defaultValue: 0) as int,
-        indentFirstLine:
-            Storage.setting('novel_indentFirstLine', defaultValue: true) as bool,
-        justify: Storage.setting('novel_justify', defaultValue: false) as bool,
-        fontName: Storage.setting('novel_fontName',
-            defaultValue: ReaderFont.options.first.name) as String,
-        themeName: Storage.setting('novel_themeName',
-            defaultValue: ReaderTheme.followApp.name) as String,
-      );
+    fontSize: _d('fontSize'),
+    lineHeight: _d('lineHeight'),
+    paragraphSpacing: _d('paragraphSpacing'),
+    horizontalPadding: _d('horizontalPadding'),
+    verticalPadding: _d('verticalPadding'),
+    letterSpacing: _d('letterSpacing'),
+    fontWeightIndex:
+        Storage.setting('novel_fontWeightIndex', defaultValue: 0) as int,
+    indentFirstLine:
+        Storage.setting('novel_indentFirstLine', defaultValue: true) as bool,
+    justify: Storage.setting('novel_justify', defaultValue: false) as bool,
+    fontName:
+        Storage.setting(
+              'novel_fontName',
+              defaultValue: ReaderFont.options.first.name,
+            )
+            as String,
+    themeName:
+        Storage.setting(
+              'novel_themeName',
+              defaultValue: ReaderTheme.followApp.name,
+            )
+            as String,
+    paged: Storage.setting('novel_paged', defaultValue: false) == true,
+  );
 
   Future<void> save() async {
     await Storage.setSetting('novel_fontSize', fontSize);
@@ -126,6 +137,7 @@ class NovelReaderSettings {
     await Storage.setSetting('novel_justify', justify);
     await Storage.setSetting('novel_fontName', fontName);
     await Storage.setSetting('novel_themeName', themeName);
+    await Storage.setSetting('novel_paged', paged);
   }
 
   void resetToDefaults() {
@@ -140,29 +152,31 @@ class NovelReaderSettings {
     justify = false;
     fontName = ReaderFont.options.first.name;
     themeName = ReaderTheme.followApp.name;
+    paged = false;
   }
 
   ReaderTheme get theme => ReaderTheme.byName(themeName);
   ReaderFont get font => ReaderFont.byName(fontName);
 
-  FontWeight get fontWeight =>
-      const [FontWeight.w400, FontWeight.w500, FontWeight.w700][
-          fontWeightIndex.clamp(0, 2)];
+  FontWeight get fontWeight => const [
+    FontWeight.w400,
+    FontWeight.w500,
+    FontWeight.w700,
+  ][fontWeightIndex.clamp(0, 2)];
 
   Color background(BuildContext context) => theme.isFollowApp
       ? Theme.of(context).colorScheme.surface
       : theme.background;
 
-  Color foreground(BuildContext context) => theme.isFollowApp
-      ? Theme.of(context).colorScheme.onSurface
-      : theme.text;
+  Color foreground(BuildContext context) =>
+      theme.isFollowApp ? Theme.of(context).colorScheme.onSurface : theme.text;
 
   TextStyle textStyle(BuildContext context) => TextStyle(
-        fontSize: fontSize,
-        height: lineHeight,
-        letterSpacing: letterSpacing,
-        fontWeight: fontWeight,
-        fontFamily: font.family,
-        color: foreground(context),
-      );
+    fontSize: fontSize,
+    height: lineHeight,
+    letterSpacing: letterSpacing,
+    fontWeight: fontWeight,
+    fontFamily: font.family,
+    color: foreground(context),
+  );
 }

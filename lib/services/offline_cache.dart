@@ -9,6 +9,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../models/models.dart';
 import 'network.dart';
+import 'image_loader.dart';
+import 'source_image_codec.dart';
 import 'sources.dart';
 
 /// Progress of one in-flight download.
@@ -32,6 +34,7 @@ class OfflineCache extends ChangeNotifier {
 
   static late Directory _root;
   static late Box _manifests;
+  static late Box _catalogs;
   static bool _ready = false;
 
   final Map<String, DownloadProgress> _active = {};
@@ -43,9 +46,10 @@ class OfflineCache extends ChangeNotifier {
   static String keyOf(String package, String episodeUrl) =>
       '$package|$episodeUrl';
 
-  static Future<void> init(Box manifests) async {
-    if (_ready) return;
+  static Future<void> init(Box manifests, Box catalogs) async {
     _manifests = manifests;
+    _catalogs = catalogs;
+    if (_ready) return;
     final base = await getApplicationSupportDirectory();
     _root = Directory('${base.path}${Platform.pathSeparator}offline');
     if (!_root.existsSync()) _root.createSync(recursive: true);
@@ -79,6 +83,58 @@ class OfflineCache extends ChangeNotifier {
   static List<Map> allEntries() =>
       _manifests.values.whereType<Map>().toList(growable: false);
 
+  static bool hasWork(String itemKey) =>
+      allEntries().any((entry) => entry['itemKey'] == itemKey);
+
+  /// Keep one catalog per downloaded work, separate from chapter manifests.
+  static Future<void> saveDetail(MediaItem item, MediaDetail detail) async {
+    if (!hasWork(item.key) ||
+        !detail.episodes.any((group) => group.urls.isNotEmpty)) {
+      return;
+    }
+    await _catalogs.put(item.key, detail.toJson());
+  }
+
+  static MediaDetail? readDetail(MediaItem item) {
+    final stored = _catalogs.get(item.key);
+    if (stored is Map) {
+      try {
+        final detail = MediaDetail.fromJson(stored);
+        if (detail.episodes.any((group) => group.urls.isNotEmpty)) {
+          return detail;
+        }
+      } catch (_) {
+        // A bad catalog must not prevent intact downloaded chapters opening.
+      }
+    }
+    // Older versions stored no catalog. Their manifests still contain enough
+    // information to open the downloaded chapters without a source runtime.
+    final entries = allEntries().where((entry) {
+      final url = entry['episodeUrl']?.toString() ?? '';
+      return entry['itemKey'] == item.key &&
+          url.isNotEmpty &&
+          read(item.package, url) != null;
+    }).toList();
+    if (entries.isEmpty) return null;
+    return MediaDetail(
+      title: item.title,
+      cover: item.cover,
+      desc: '完整目录尚未缓存，当前显示已下载章节。联网打开作品后会自动补全目录。',
+      episodes: [
+        MediaEpisodeGroup(
+          title: '已缓存章节',
+          urls: [
+            for (final entry in entries)
+              MediaEpisode(
+                name: (entry['episodeName'] ?? entry['episodeUrl']).toString(),
+                url: entry['episodeUrl'].toString(),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
   static Future<int> totalBytes() async {
     var total = 0;
     for (final entry in allEntries()) {
@@ -93,7 +149,11 @@ class OfflineCache extends ChangeNotifier {
     _cancels[key]?.cancel('用户取消');
   }
 
-  Future<void> download(MediaItem item, MediaEpisode episode) async {
+  Future<void> download(
+    MediaItem item,
+    MediaEpisode episode, {
+    MediaDetail? detail,
+  }) async {
     final key = keyOf(item.package, episode.url);
     if (_active.containsKey(key) || has(item.package, episode.url)) return;
 
@@ -103,23 +163,48 @@ class OfflineCache extends ChangeNotifier {
     notifyListeners();
 
     final dir = Directory(
-        '${_root.path}${Platform.pathSeparator}${key.hashCode.toRadixString(16)}');
+      '${_root.path}${Platform.pathSeparator}${key.hashCode.toRadixString(16)}',
+    );
     try {
       if (!dir.existsSync()) dir.createSync(recursive: true);
+      var catalog = detail;
+      if (catalog == null) {
+        try {
+          catalog = await Sources.detail(item);
+        } catch (_) {
+          // Detail-page callers supply the catalog they already loaded. A
+          // direct download can still succeed if only the chapter is online.
+        }
+      }
       final raw = await Sources.watch(item, episode.url);
 
       late Map payload;
       var bytes = 0;
       switch (item.type) {
         case MediaType.manga:
-          (payload, bytes) =
-              await _downloadManga(item, raw, dir, key, cancelToken);
+          (payload, bytes) = await _downloadManga(
+            item,
+            raw,
+            dir,
+            key,
+            cancelToken,
+          );
         case MediaType.novel:
-          (payload, bytes) =
-              await _downloadNovel(item, raw, dir, key, cancelToken);
+          (payload, bytes) = await _downloadNovel(
+            item,
+            raw,
+            dir,
+            key,
+            cancelToken,
+          );
         case MediaType.anime:
-          (payload, bytes) =
-              await _downloadAnime(item, raw, dir, key, cancelToken);
+          (payload, bytes) = await _downloadAnime(
+            item,
+            raw,
+            dir,
+            key,
+            cancelToken,
+          );
       }
 
       await _manifests.put(key, {
@@ -137,10 +222,13 @@ class OfflineCache extends ChangeNotifier {
         'probe': payload['__probe'] ?? '',
         'savedAt': DateTime.now().millisecondsSinceEpoch,
       });
+      if (catalog != null) await saveDetail(item, catalog);
     } catch (e) {
       // Never leave a half-written chapter that would read as complete.
       try {
         if (dir.existsSync()) dir.deleteSync(recursive: true);
+        await _manifests.delete(key);
+        if (!hasWork(item.key)) await _catalogs.delete(item.key);
       } catch (_) {}
       if (!cancelToken.isCancelled) rethrow;
     } finally {
@@ -150,8 +238,13 @@ class OfflineCache extends ChangeNotifier {
     }
   }
 
-  Future<(Map, int)> _downloadManga(MediaItem item, Map raw, Directory dir,
-      String key, CancelToken cancelToken) async {
+  Future<(Map, int)> _downloadManga(
+    MediaItem item,
+    Map raw,
+    Directory dir,
+    String key,
+    CancelToken cancelToken,
+  ) async {
     final watch = MangaWatch.fromJson(raw);
     if (watch.urls.isEmpty) throw Exception('该章节没有可下载的页面');
 
@@ -160,17 +253,29 @@ class OfflineCache extends ChangeNotifier {
     for (var i = 0; i < watch.urls.length; i++) {
       _active[key] = DownloadProgress(i, watch.urls.length, '第 ${i + 1} 页');
       notifyListeners();
-      final target = '${dir.path}${Platform.pathSeparator}'
+      final target =
+          '${dir.path}${Platform.pathSeparator}'
           '${i.toString().padLeft(4, '0')}${_extensionOf(watch.urls[i])}';
-      bytes += await _fetchToFile(item.package, watch.urls[i], target,
-          headers: watch.headers, netMode: watch.netMode, cancelToken: cancelToken);
+      bytes += await _fetchToFile(
+        item.package,
+        watch.urls[i],
+        target,
+        headers: watch.headers,
+        netMode: watch.netMode,
+        cancelToken: cancelToken,
+      );
       paths.add(target);
     }
     return ({'urls': paths, '__probe': paths.first}, bytes);
   }
 
-  Future<(Map, int)> _downloadNovel(MediaItem item, Map raw, Directory dir,
-      String key, CancelToken cancelToken) async {
+  Future<(Map, int)> _downloadNovel(
+    MediaItem item,
+    Map raw,
+    Directory dir,
+    String key,
+    CancelToken cancelToken,
+  ) async {
     final watch = NovelWatch.fromJson(raw);
     final content = <dynamic>[];
     var bytes = 0;
@@ -183,16 +288,24 @@ class OfflineCache extends ChangeNotifier {
         bytes += block.text.length;
         continue;
       }
-      _active[key] =
-          DownloadProgress(imageIndex, watch.blocks.length, '插图 ${imageIndex + 1}');
+      _active[key] = DownloadProgress(
+        imageIndex,
+        watch.blocks.length,
+        '插图 ${imageIndex + 1}',
+      );
       notifyListeners();
-      final target = '${dir.path}${Platform.pathSeparator}'
+      final target =
+          '${dir.path}${Platform.pathSeparator}'
           'img${imageIndex.toString().padLeft(3, '0')}${_extensionOf(block.imageUrl)}';
       try {
-        bytes += await _fetchToFile(item.package, block.imageUrl, target,
-            headers: watch.headers,
-            netMode: watch.netMode,
-            cancelToken: cancelToken);
+        bytes += await _fetchToFile(
+          item.package,
+          block.imageUrl,
+          target,
+          headers: watch.headers,
+          netMode: watch.netMode,
+          cancelToken: cancelToken,
+        );
         content.add({'type': 'image', 'url': target});
         probe ??= target;
         imageIndex++;
@@ -210,37 +323,54 @@ class OfflineCache extends ChangeNotifier {
     }
     return (
       {'content': content, 'subtitle': watch.subtitle, '__probe': probe},
-      bytes
+      bytes,
     );
   }
 
-  Future<(Map, int)> _downloadAnime(MediaItem item, Map raw, Directory dir,
-      String key, CancelToken cancelToken) async {
+  Future<(Map, int)> _downloadAnime(
+    MediaItem item,
+    Map raw,
+    Directory dir,
+    String key,
+    CancelToken cancelToken,
+  ) async {
     final watch = AnimeWatch.fromJson(raw);
     if (watch.url.isEmpty) throw Exception('没有取到播放地址');
 
     final isHls = watch.type == 'hls' || watch.url.contains('.m3u8');
     if (!isHls) {
       final target = '${dir.path}${Platform.pathSeparator}video.mp4';
-      final bytes = await _fetchToFile(item.package, watch.url, target,
-          headers: watch.headers,
-          netMode: watch.netMode,
-          cancelToken: cancelToken,
-          onBytes: (received, total) {
-            _active[key] = DownloadProgress(
-                received ~/ 1024, (total <= 0 ? received : total) ~/ 1024, '视频');
-            notifyListeners();
-          });
+      final bytes = await _fetchToFile(
+        item.package,
+        watch.url,
+        target,
+        headers: watch.headers,
+        netMode: watch.netMode,
+        cancelToken: cancelToken,
+        onBytes: (received, total) {
+          _active[key] = DownloadProgress(
+            received ~/ 1024,
+            (total <= 0 ? received : total) ~/ 1024,
+            '视频',
+          );
+          notifyListeners();
+        },
+      );
       return ({'type': 'mp4', 'url': target, '__probe': target}, bytes);
     }
 
     // HLS: pull every segment and rewrite the playlist to point at them.
     final dio = _dioFor(item.package, watch.netMode);
     final playlistUrl = watch.url;
-    final body = (await dio.get<String>(playlistUrl,
-            options: Options(headers: watch.headers, responseType: ResponseType.plain),
-            cancelToken: cancelToken))
-        .data ??
+    final body =
+        (await dio.get<String>(
+          playlistUrl,
+          options: Options(
+            headers: watch.headers,
+            responseType: ResponseType.plain,
+          ),
+          cancelToken: cancelToken,
+        )).data ??
         '';
     final lines = body.split(RegExp(r'\r?\n'));
     final segments = lines
@@ -260,25 +390,37 @@ class OfflineCache extends ChangeNotifier {
         final keyMatch = RegExp(r'URI="([^"]+)"').firstMatch(trimmed);
         if (keyMatch != null) {
           final keyTarget = '${dir.path}${Platform.pathSeparator}key$index.bin';
-          bytes += await _fetchToFile(item.package,
-              _resolve(playlistUrl, keyMatch.group(1)!), keyTarget,
-              headers: watch.headers,
-              netMode: watch.netMode,
-              cancelToken: cancelToken);
-          rewritten.add(trimmed.replaceFirst(
-              keyMatch.group(0)!, 'URI="key$index.bin"'));
+          bytes += await _fetchToFile(
+            item.package,
+            _resolve(playlistUrl, keyMatch.group(1)!),
+            keyTarget,
+            headers: watch.headers,
+            netMode: watch.netMode,
+            cancelToken: cancelToken,
+          );
+          rewritten.add(
+            trimmed.replaceFirst(keyMatch.group(0)!, 'URI="key$index.bin"'),
+          );
           continue;
         }
         rewritten.add(trimmed);
         continue;
       }
-      _active[key] = DownloadProgress(index, segments.length, '分片 ${index + 1}');
+      _active[key] = DownloadProgress(
+        index,
+        segments.length,
+        '分片 ${index + 1}',
+      );
       notifyListeners();
       final name = 'seg${index.toString().padLeft(5, '0')}.ts';
       bytes += await _fetchToFile(
-          item.package, _resolve(playlistUrl, trimmed),
-          '${dir.path}${Platform.pathSeparator}$name',
-          headers: watch.headers, netMode: watch.netMode, cancelToken: cancelToken);
+        item.package,
+        _resolve(playlistUrl, trimmed),
+        '${dir.path}${Platform.pathSeparator}$name',
+        headers: watch.headers,
+        netMode: watch.netMode,
+        cancelToken: cancelToken,
+      );
       // Relative names resolve against the playlist's own folder.
       rewritten.add(name);
       index++;
@@ -288,7 +430,7 @@ class OfflineCache extends ChangeNotifier {
     File(localPlaylist).writeAsStringSync(rewritten.join('\n'));
     return (
       {'type': 'hls', 'url': localPlaylist, '__probe': localPlaylist},
-      bytes
+      bytes,
     );
   }
 
@@ -296,12 +438,15 @@ class OfflineCache extends ChangeNotifier {
 
   static Future<void> remove(String package, String episodeUrl) async {
     final key = keyOf(package, episodeUrl);
+    final itemKey = manifest(package, episodeUrl)?['itemKey']?.toString();
     final dir = Directory(
-        '${_root.path}${Platform.pathSeparator}${key.hashCode.toRadixString(16)}');
+      '${_root.path}${Platform.pathSeparator}${key.hashCode.toRadixString(16)}',
+    );
     try {
       if (dir.existsSync()) dir.deleteSync(recursive: true);
     } catch (_) {}
     await _manifests.delete(key);
+    if (itemKey != null && !hasWork(itemKey)) await _catalogs.delete(itemKey);
     instance.notifyListeners();
   }
 
@@ -311,6 +456,7 @@ class OfflineCache extends ChangeNotifier {
       _root.createSync(recursive: true);
     } catch (_) {}
     await _manifests.clear();
+    await _catalogs.clear();
     instance.notifyListeners();
   }
 
@@ -330,7 +476,7 @@ class OfflineCache extends ChangeNotifier {
   }
 
   static String _extensionOf(String url) {
-    final clean = url.split('?').first;
+    final clean = url.split(RegExp(r'[?#]')).first;
     final dot = clean.lastIndexOf('.');
     if (dot < 0 || clean.length - dot > 6) return '.img';
     return clean.substring(dot);
@@ -351,6 +497,14 @@ class OfflineCache extends ChangeNotifier {
       if (!source.existsSync()) throw Exception('本地文件不存在: $url');
       source.copySync(target);
       return source.lengthSync();
+    }
+    if (SourceImageCodec.episodeId(package, url) != null) {
+      final data = await SourceImageCache.fetchBytes(
+        package, url, headers: headers, netMode: netMode, cancelToken: cancelToken,
+      );
+      if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
+      await File(target).writeAsBytes(data);
+      return data.length;
     }
     final response = await _dioFor(package, netMode).get<List<int>>(
       url,

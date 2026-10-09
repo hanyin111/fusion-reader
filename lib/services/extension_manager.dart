@@ -15,6 +15,7 @@ class ExtensionManager extends ChangeNotifier {
     'mangadex',
     'weebcentral',
     'picacg',
+    'jmcomic',
     'gutenberg',
     'royalroad',
     'esjzone',

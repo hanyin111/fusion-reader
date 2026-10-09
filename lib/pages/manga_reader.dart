@@ -73,7 +73,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     // The topmost item that is still at least partly on screen.
     final first = positions
         .where((p) => p.itemTrailingEdge > 0)
-        .fold<int?>(null, (min, p) => min == null || p.index < min ? p.index : min);
+        .fold<int?>(
+          null,
+          (min, p) => min == null || p.index < min ? p.index : min,
+        );
     if (first != null && first != _page) {
       setState(() => _page = first);
       _scheduleSave(first);
@@ -82,19 +85,25 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
 
   void _scheduleSave(int page) {
     _saveDebounce?.cancel();
-    _saveDebounce = Timer(const Duration(milliseconds: 600), () => _persist(page));
+    _saveDebounce = Timer(
+      const Duration(milliseconds: 600),
+      () => _persist(page),
+    );
   }
 
   void _persist(int page) {
-    Storage.saveHistory(HistoryRecord(
-      key: widget.item.key,
-      episodeUrl: _episode.url,
-      episodeName: _episode.name,
-      groupIndex: widget.groupIndex,
-      episodeIndex: _index,
-      timestamp: DateTime.now().millisecondsSinceEpoch,
-      position: page,
-    ), item: widget.item);
+    Storage.saveHistory(
+      HistoryRecord(
+        key: widget.item.key,
+        episodeUrl: _episode.url,
+        episodeName: _episode.name,
+        groupIndex: widget.groupIndex,
+        episodeIndex: _index,
+        timestamp: DateTime.now().millisecondsSinceEpoch,
+        position: page,
+      ),
+      item: widget.item,
+    );
   }
 
   Future<void> _load({bool restore = false}) async {
@@ -103,9 +112,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     var startPage = 0;
     if (restore) {
       final history = Storage.historyOf(widget.item.key);
-      if (history != null &&
-          history.groupIndex == widget.groupIndex &&
-          history.episodeIndex == _index) {
+      if (history != null && history.episodeUrl == _episode.url) {
         startPage = history.position;
       }
     }
@@ -120,7 +127,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       final raw = await Sources.watchCached(widget.item, _episode.url);
       if (!mounted) return;
       final watch = MangaWatch.fromJson(raw);
-      final page = startPage.clamp(0, watch.urls.isEmpty ? 0 : watch.urls.length - 1);
+      final page = startPage.clamp(
+        0,
+        watch.urls.isEmpty ? 0 : watch.urls.length - 1,
+      );
       setState(() {
         _watch = watch;
         _page = page;
@@ -169,20 +179,25 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text('加载失败\n$_error',
-                              style: const TextStyle(color: Colors.white),
-                              textAlign: TextAlign.center,
-                              maxLines: 8),
+                          Text(
+                            '加载失败\n$_error',
+                            style: const TextStyle(color: Colors.white),
+                            textAlign: TextAlign.center,
+                            maxLines: 8,
+                          ),
                           const SizedBox(height: 12),
-                          FilledButton(onPressed: _load, child: const Text('重试')),
+                          FilledButton(
+                            onPressed: _load,
+                            child: const Text('重试'),
+                          ),
                         ],
                       ),
                     )
                   : watch == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : _webtoon
-                          ? _buildWebtoon(watch)
-                          : _buildPaged(watch),
+                  ? const Center(child: CircularProgressIndicator())
+                  : _webtoon
+                  ? _buildWebtoon(watch)
+                  : _buildPaged(watch),
             ),
           ),
           if (_showBar) _buildTopBar(),
@@ -199,7 +214,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       netMode: watch.netMode,
       headers: watch.headers,
       fit: fit,
-      error: const Center(child: Icon(Icons.broken_image, color: Colors.white54)),
+      error: const Center(
+        child: Icon(Icons.broken_image, color: Colors.white54),
+      ),
     );
   }
 
@@ -211,10 +228,8 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         setState(() => _page = i);
         _scheduleSave(i);
       },
-      itemBuilder: (context, i) => InteractiveViewer(
-        maxScale: 5,
-        child: _image(watch.urls[i], watch),
-      ),
+      itemBuilder: (context, i) =>
+          InteractiveViewer(maxScale: 5, child: _image(watch.urls[i], watch)),
     );
   }
 
@@ -227,7 +242,8 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       itemScrollController: _itemCtrl,
       itemPositionsListener: _itemPositions,
       initialScrollIndex: _page,
-      itemBuilder: (context, i) => _image(watch.urls[i], watch, fit: BoxFit.fitWidth),
+      itemBuilder: (context, i) =>
+          _image(watch.urls[i], watch, fit: BoxFit.fitWidth),
     );
   }
 
@@ -254,11 +270,17 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              CommentsButton(item: widget.item, episode: _episode, color: Colors.white),
+              CommentsButton(
+                item: widget.item,
+                episode: _episode,
+                color: Colors.white,
+              ),
               IconButton(
                 tooltip: _webtoon ? '切换为翻页模式' : '切换为条漫模式',
-                icon: Icon(_webtoon ? Icons.auto_stories : Icons.view_day,
-                    color: Colors.white),
+                icon: Icon(
+                  _webtoon ? Icons.auto_stories : Icons.view_day,
+                  color: Colors.white,
+                ),
                 onPressed: () {
                   // Carry the current page across the mode switch.
                   final page = _page;
@@ -302,9 +324,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                 child: watch.urls.length < 2
                     ? const SizedBox()
                     : Slider(
-                        value: (_page + 1)
-                            .toDouble()
-                            .clamp(1, watch.urls.length.toDouble()),
+                        value: (_page + 1).toDouble().clamp(
+                          1,
+                          watch.urls.length.toDouble(),
+                        ),
                         min: 1,
                         max: watch.urls.length.toDouble(),
                         divisions: watch.urls.length - 1,
@@ -312,13 +335,16 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                         onChanged: (v) => _jumpTo(v.toInt() - 1),
                       ),
               ),
-              Text('${_page + 1}/${watch.urls.length}',
-                  style: const TextStyle(color: Colors.white)),
+              Text(
+                '${_page + 1}/${watch.urls.length}',
+                style: const TextStyle(color: Colors.white),
+              ),
               IconButton(
                 tooltip: '下一章',
                 icon: const Icon(Icons.skip_next, color: Colors.white),
-                onPressed:
-                    _index < widget.group.urls.length - 1 ? () => _go(1) : null,
+                onPressed: _index < widget.group.urls.length - 1
+                    ? () => _go(1)
+                    : null,
               ),
             ],
           ),

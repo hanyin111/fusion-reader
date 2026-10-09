@@ -8,6 +8,9 @@ on:
         type: string
         default: ''
   workflow_call:
+    secrets:
+      FUSION_SYNC_URL:
+        required: false
     inputs:
       release_tag:
         type: string
@@ -15,6 +18,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  FUSION_SYNC_URL: ${{ secrets.FUSION_SYNC_URL }}
 
 jobs:
   ios:
@@ -74,6 +80,11 @@ jobs:
         run: |
           set -o pipefail
           flutter test integration_test/library_transfer_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-library-transfer-test.log
+      - name: Test native account token storage on iOS simulator
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          flutter test integration_test/account_storage_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-account-storage-test.log
       - name: Capture simulator diagnostics
         if: failure()
         timeout-minutes: 2
@@ -90,7 +101,7 @@ jobs:
           retention-days: 7
       # Unsigned build: sign for sideloading with your own certificate.
       - name: Build iOS release
-        run: flutter build ios --release --no-codesign --no-pub
+        run: flutter build ios --release --no-codesign --no-pub --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
       - name: Package unsigned IPA
         run: |
           mkdir -p Payload

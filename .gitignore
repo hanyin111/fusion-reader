@@ -33,6 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 /backups/
+/server/data/
+/admin/.venv/
+/admin/*.csv
+/admin/known_hosts
+__pycache__/
 
 # Symbolication related
 app.*.symbols

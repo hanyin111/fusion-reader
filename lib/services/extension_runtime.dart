@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,6 +13,7 @@ import '../models/models.dart';
 import 'apple_js_runtime.dart';
 import 'browser_loader.dart';
 import 'extension_result.dart';
+import 'extension_crypto.dart';
 import 'network.dart';
 import 'storage.dart';
 
@@ -78,6 +80,7 @@ class ExtensionService {
     _channel(rt, 'md5', _handleMd5);
     _channel(rt, 'hmacSha256', _handleHmacSha256);
     _channel(rt, 'base64Encode', _handleBase64Encode);
+    _channel(rt, 'aesEcbDecrypt', _handleAesEcbDecrypt);
     _channel(rt, 'registerSetting', _handleRegisterSetting);
     _channel(rt, 'getSetting', _handleGetSetting);
     _channel(rt, 'setSetting', _handleSetSetting);
@@ -281,12 +284,18 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     // Some APIs report errors as 4xx with a JSON body; those extensions opt in
     // to receiving the body instead of an exception.
     final allowErrorStatus = options['allowErrorStatus'] == true;
+    final timeoutMs = (options['timeoutMs'] as num?)?.toInt().clamp(1000, 120000);
 
     // Source sites throw transient 5xx and connection resets often enough that
     // a single failure would wrongly mark a working source as broken.
     Response response;
     var attempt = 0;
     while (true) {
+      final cancel = timeoutMs == null ? null : CancelToken();
+      final timer = timeoutMs == null ? null : Timer(
+        Duration(milliseconds: timeoutMs),
+        () => cancel!.cancel('请求超时'),
+      );
       try {
         response = await dio.request(
           url,
@@ -295,10 +304,13 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
             method: method,
             headers: headers,
             responseType: ResponseType.plain,
+            receiveTimeout: timeoutMs == null ? null : Duration(milliseconds: timeoutMs),
+            sendTimeout: timeoutMs == null ? null : Duration(milliseconds: timeoutMs),
             validateStatus: allowErrorStatus
                 ? (s) => s != null && s < 600
                 : (s) => s != null && s < 400,
           ),
+          cancelToken: cancel,
         );
         break;
       } on DioException catch (e) {
@@ -312,7 +324,7 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
             e.type == DioExceptionType.receiveTimeout ||
             e.type == DioExceptionType.connectionError;
         final maxAttempts = rateLimited ? 4 : 2;
-        if (retryable && attempt < maxAttempts) {
+        if (options['retry'] != false && retryable && attempt < maxAttempts) {
           attempt++;
           var wait = Duration(milliseconds: 600 * attempt);
           if (rateLimited) {
@@ -333,6 +345,8 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
           meta.package,
           'HTTP $status: ${body.substring(0, body.length.clamp(0, 400))}',
         );
+      } finally {
+        timer?.cancel();
       }
     }
     final text = response.data.toString();
@@ -418,6 +432,9 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
 
   Future<dynamic> _handleBase64Encode(dynamic payload) async =>
       base64Encode(utf8.encode(payload['text'].toString()));
+
+  Future<dynamic> _handleAesEcbDecrypt(dynamic payload) async =>
+      decryptAesEcb(payload['ciphertext'].toString(), payload['key'].toString());
 
   Future<dynamic> _handleRegisterSetting(dynamic payload) async {
     final setting = payload['setting'] as Map? ?? {};

@@ -53,7 +53,7 @@ class ExtensionMeta {
   final CommentScope? commentScope;
 
   /// Declared default network routing: 'auto' | 'direct' | 'proxy'.
-  /// A user override in settings always wins over this.
+  /// This is an internal compatibility default supplied by the extension.
   final String network;
 
   const ExtensionMeta({
@@ -192,6 +192,23 @@ class MediaDetail {
     required this.episodes,
     this.authors = const [],
   });
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'cover': cover,
+    'desc': desc,
+    'authors': authors.map((author) => author.toJson()).toList(),
+    'episodes': [
+      for (final group in episodes)
+        {
+          'title': group.title,
+          'urls': [
+            for (final episode in group.urls)
+              {'name': episode.name, 'url': episode.url},
+          ],
+        },
+    ],
+  };
 
   // Old Miru scripts put the work's author in the description. Recognize only
   // an explicit metadata line, never the extension developer's @author field.
@@ -396,6 +413,9 @@ class HistoryRecord {
   /// novels, playback milliseconds for video.
   final int position;
 
+  /// UTF-16 offset inside a novel paragraph; page numbers change with layout.
+  final int textOffset;
+
   const HistoryRecord({
     required this.key,
     this.item,
@@ -405,21 +425,27 @@ class HistoryRecord {
     required this.episodeIndex,
     required this.timestamp,
     this.position = 0,
+    this.textOffset = 0,
   });
 
   bool get hasProgress => episodeUrl.isNotEmpty;
 
-  HistoryRecord copyWith({MediaItem? item, int? position, int? timestamp}) =>
-      HistoryRecord(
-        key: key,
-        item: item ?? this.item,
-        episodeUrl: episodeUrl,
-        episodeName: episodeName,
-        groupIndex: groupIndex,
-        episodeIndex: episodeIndex,
-        timestamp: timestamp ?? this.timestamp,
-        position: position ?? this.position,
-      );
+  HistoryRecord copyWith({
+    MediaItem? item,
+    int? position,
+    int? textOffset,
+    int? timestamp,
+  }) => HistoryRecord(
+    key: key,
+    item: item ?? this.item,
+    episodeUrl: episodeUrl,
+    episodeName: episodeName,
+    groupIndex: groupIndex,
+    episodeIndex: episodeIndex,
+    timestamp: timestamp ?? this.timestamp,
+    position: position ?? this.position,
+    textOffset: textOffset ?? this.textOffset,
+  );
 
   Map<String, dynamic> toJson() => {
     'key': key,
@@ -430,6 +456,7 @@ class HistoryRecord {
     'episodeIndex': episodeIndex,
     'timestamp': timestamp,
     'position': position,
+    if (textOffset != 0) 'textOffset': textOffset,
   };
 
   factory HistoryRecord.fromJson(Map json) => HistoryRecord(
@@ -441,5 +468,6 @@ class HistoryRecord {
     episodeIndex: json['episodeIndex'] ?? 0,
     timestamp: json['timestamp'] ?? 0,
     position: json['position'] ?? 0,
+    textOffset: json['textOffset'] ?? 0,
   );
 }

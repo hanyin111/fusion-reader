@@ -1,0 +1,23 @@
+[Unit]
+Description=FusionReader account and library sync
+After=network.target
+
+[Service]
+Type=simple
+User=fusion-sync
+Group=fusion-sync
+WorkingDirectory=/opt/fusion-reader-sync
+Environment=FUSION_SYNC_DB=/var/lib/fusion-reader-sync/library.sqlite3
+Environment=FUSION_SYNC_TRUSTED_PROXY=127.0.0.1
+ExecStart=/opt/fusion-reader-sync/.venv/bin/gunicorn --workers 1 --threads 2 --worker-class gthread --bind 127.0.0.1:18765 --timeout 30 --limit-request-fields 32 --limit-request-field_size 4096 sync_server:create_app()
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/fusion-reader-sync
+
+[Install]
+WantedBy=multi-user.target
