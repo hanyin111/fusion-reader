@@ -1,3 +1,4 @@
+import 'repository_fixture.dart';
 // Opt in with FUSION_VERIFY_PICACG_ACCOUNT=1 after closing the normal app.
 // Uses the account already configured in the app; never prints credentials,
 // installs fixtures, posts comments, likes anything, or changes reading history.
@@ -33,9 +34,7 @@ void main() {
           print('PICACG_ACCOUNT_NOT_CONFIGURED: 登录后的在线评论验证跳过。');
           return;
         }
-        final script = await rootBundle.loadString(
-          'assets/extensions/picacg.js',
-        );
+        final script = await repositoryFixture('picacg');
         final prelude = await rootBundle.loadString('assets/js/runtime.js');
         final service = ExtensionService(
           meta: ExtensionMeta.parse(script)!,

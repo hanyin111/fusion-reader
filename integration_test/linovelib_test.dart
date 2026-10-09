@@ -1,3 +1,4 @@
+import 'repository_fixture.dart';
 // Live regression: a mobile UA on its own used to return only a short preview.
 // Run: flutter test integration_test/linovelib_test.dart -d windows
 // ignore_for_file: avoid_print
@@ -54,9 +55,7 @@ void main() {
       );
       await tester.runAsync(() async {
         await Storage.init();
-        final script = await rootBundle.loadString(
-          'assets/extensions/linovelib.js',
-        );
+        final script = await repositoryFixture('linovelib');
         final prelude = await rootBundle.loadString('assets/js/runtime.js');
         final service = ExtensionService(
           meta: ExtensionMeta.parse(script)!,

@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../services/extension_manager.dart';
 import '../services/extension_runtime.dart';
 import '../widgets/media_card.dart';
+import 'extension_repository_page.dart';
 
 /// Browse & search across sources, one tab per category.
 class ExplorePage extends StatefulWidget {
@@ -13,7 +14,8 @@ class ExplorePage extends StatefulWidget {
   State<ExplorePage> createState() => _ExplorePageState();
 }
 
-class _ExplorePageState extends State<ExplorePage> with SingleTickerProviderStateMixin {
+class _ExplorePageState extends State<ExplorePage>
+    with SingleTickerProviderStateMixin {
   late final TabController _tab = TabController(length: 3, vsync: this);
 
   @override
@@ -51,7 +53,8 @@ class ExploreTab extends StatefulWidget {
   State<ExploreTab> createState() => _ExploreTabState();
 }
 
-class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMixin {
+class _ExploreTabState extends State<ExploreTab>
+    with AutomaticKeepAliveClientMixin {
   String? _package;
   String _keyword = '';
   final _searchCtrl = TextEditingController();
@@ -65,6 +68,8 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
 
   List<MediaChannel> _channels = const [];
   String? _channelKey;
+  ExtensionService? _observedService;
+  int _listGeneration = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -75,8 +80,10 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
   ExtensionService? get _current {
     final sources = _sources;
     if (sources.isEmpty) return null;
-    return sources.firstWhere((s) => s.meta.package == _package,
-        orElse: () => sources.first);
+    return sources.firstWhere(
+      (s) => s.meta.package == _package,
+      orElse: () => sources.first,
+    );
   }
 
   @override
@@ -90,7 +97,6 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
         _load();
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _reset());
   }
 
   @override
@@ -102,6 +108,8 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
 
   void _reset({bool reloadChannels = true}) {
     setState(() {
+      _listGeneration++;
+      _loading = false;
       _items.clear();
       _page = 1;
       _end = false;
@@ -118,10 +126,15 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
   Future<void> _loadChannels() async {
     final service = _current;
     if (service == null) return;
+    final generation = _listGeneration;
     try {
       await ExtensionManager.instance.ensureLoaded(service.meta.package);
       final channels = await service.channels();
-      if (!mounted || service.meta.package != _current?.meta.package) return;
+      if (!mounted ||
+          generation != _listGeneration ||
+          !identical(service, _current)) {
+        return;
+      }
       setState(() => _channels = channels);
     } catch (_) {
       // Channels are optional; browsing works without them.
@@ -131,6 +144,7 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
   Future<void> _load() async {
     final service = _current;
     if (service == null || _loading) return;
+    final generation = _listGeneration;
     setState(() {
       _loading = true;
       _error = null;
@@ -140,7 +154,7 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
       final results = _keyword.isEmpty
           ? await service.latest(_page, channel: _channelKey)
           : await service.search(_keyword, _page);
-      if (!mounted) return;
+      if (!mounted || generation != _listGeneration) return;
       setState(() {
         if (results.isEmpty) {
           _end = true;
@@ -150,10 +164,12 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
         }
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _listGeneration) return;
       setState(() => _error = e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && generation == _listGeneration) {
+        setState(() => _loading = false);
+      }
     }
   }
 
@@ -162,9 +178,34 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
     super.build(context);
     final sources = _sources;
     if (sources.isEmpty) {
-      return const Center(child: Text('该分类下没有已启用的扩展源'));
+      _observedService = null;
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('该分类下没有已启用的插件'),
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ExtensionRepositoryPage(),
+                ),
+              ),
+              icon: const Icon(Icons.extension_outlined),
+              label: const Text('打开插件仓库'),
+            ),
+          ],
+        ),
+      );
     }
     final current = _current!;
+    if (!identical(_observedService, current)) {
+      _observedService = current;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reset();
+      });
+    }
 
     return Column(
       children: [
@@ -226,7 +267,8 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
                     padding: const EdgeInsets.only(right: 8),
                     child: FilterChip(
                       label: Text(channel.title),
-                      selected: _channelKey == channel.key ||
+                      selected:
+                          _channelKey == channel.key ||
                           (_channelKey == null && channel == _channels.first),
                       onSelected: (_) {
                         _channelKey = channel.key;
@@ -252,8 +294,12 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
             children: [
               const Icon(Icons.cloud_off, size: 48),
               const SizedBox(height: 12),
-              Text('加载失败，请检查网络或稍后重试\n$_error',
-                  maxLines: 6, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+              Text(
+                '加载失败，请检查网络或稍后重试\n$_error',
+                maxLines: 6,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+              ),
               const SizedBox(height: 12),
               FilledButton(onPressed: _reset, child: const Text('重试')),
             ],
@@ -280,10 +326,11 @@ class _ExploreTabState extends State<ExploreTab> with AutomaticKeepAliveClientMi
       itemBuilder: (context, i) {
         if (i >= _items.length) {
           return const Center(
-              child: Padding(
-            padding: EdgeInsets.all(8),
-            child: CircularProgressIndicator(),
-          ));
+            child: Padding(
+              padding: EdgeInsets.all(8),
+              child: CircularProgressIndicator(),
+            ),
+          );
         }
         return MediaCard(item: _items[i], showTypeBadge: false);
       },

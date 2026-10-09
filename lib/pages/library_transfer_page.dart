@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../services/extension_manager.dart';
 import '../services/library_backup.dart';
 import '../services/library_transfer_files.dart';
 import '../services/storage.dart';
@@ -67,10 +66,7 @@ class _LibraryTransferPageState extends State<LibraryTransferPage> {
     final picked = await _files.pick();
     if (picked == null || !mounted) return null;
     final backup = picked.backup;
-    final knownPackages = {
-      ...ExtensionManager.bundledPackages,
-      ...Storage.installedScripts().keys,
-    };
+    final knownPackages = {...Storage.installedScripts().keys};
     final missing = backup.packages.difference(knownPackages);
     final date = backup.exportedAt.toLocal();
     setState(() => _previewing = true);

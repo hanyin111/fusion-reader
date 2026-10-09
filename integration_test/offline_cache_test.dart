@@ -1,3 +1,4 @@
+import 'repository_fixture.dart';
 // Verifies that caching stores real bytes and that a cached episode still
 // opens when the network is gone.
 //
@@ -27,6 +28,7 @@ void main() {
       await tester.runAsync(() async {
         await Storage.init();
         await ExtensionManager.instance.init();
+        await installRepositoryFixtures(['weebcentral', 'gutenberg']);
         await OfflineCache.clearAll();
 
         final report = StringBuffer('\n===== OFFLINE CACHE REPORT =====\n');

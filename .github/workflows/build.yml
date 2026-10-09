@@ -1,7 +1,7 @@
 # Windows is built locally and attached to releases by hand; CI covers the
 # rest. Android APKs are signed with the shared debug keystore from the
 # ANDROID_DEBUG_KEYSTORE_B64 secret so upgrades keep the same signature.
-name: Build Linux / macOS / iOS / Android
+name: Build Android / iOS / Linux
 
 on:
   workflow_dispatch:
@@ -65,8 +65,10 @@ jobs:
       - run: flutter pub get
       - name: Test APK publication checks
         run: python3 -m unittest discover -s test -p android_signing_test.py
+      - name: Test stable release and archival checks
+        run: python3 -m unittest discover -s test -p publish_release_test.py
       - name: Test library, readers and source image decoding
-        run: flutter test --no-pub test/library_backup_test.dart test/history_test.dart test/novel_pagination_test.dart test/novel_reader_paging_test.dart test/offline_catalog_test.dart test/extension_crypto_test.dart test/source_image_codec_test.dart test/account_service_test.dart test/account_api_test.dart test/account_page_test.dart
+        run: flutter test --no-pub test/extension_repository_test.dart test/library_backup_test.dart test/history_test.dart test/novel_pagination_test.dart test/novel_reader_paging_test.dart test/offline_catalog_test.dart test/extension_crypto_test.dart test/source_image_codec_test.dart test/account_service_test.dart test/account_api_test.dart test/account_page_test.dart
       - run: flutter build apk --release --split-per-abi --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
       - name: Verify final APK signatures and versions
         run: |
@@ -122,45 +124,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$GITHUB_REF_NAME" FusionReader-linux-x64.tar.gz --clobber
 
-  macos:
-    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-      - run: flutter pub get
-      - name: Test Apple runtime with AOT compilation
-        timeout-minutes: 15
-        run: flutter drive --profile -d macos --target integration_test/extension_runtime_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
-      - name: Test history and bundled serif font
-        timeout-minutes: 10
-        run: flutter drive --profile -d macos --target integration_test/history_font_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
-      - name: Test library import and export
-        timeout-minutes: 10
-        run: flutter drive --profile -d macos --target integration_test/library_transfer_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
-      - name: Test native account token storage
-        timeout-minutes: 10
-        run: flutter drive --profile -d macos --target integration_test/account_storage_test.dart --driver test_driver/extension_runtime_test.dart --no-pub
-      - run: flutter build macos --release --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
-      - name: Zip app bundle
-        run: ditto -c -k --sequesterRsrc --keepParent "build/macos/Build/Products/Release/fusion_reader.app" FusionReader-macos.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos
-          path: FusionReader-macos.zip
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" FusionReader-macos.zip --clobber
-
   ios:
     if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
     uses: ./.github/workflows/ios.yml
     secrets: inherit
     with:
       release_tag: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+
+  publish:
+    needs: [android, linux, ios]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish complete stable release and archive older versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish_release.py

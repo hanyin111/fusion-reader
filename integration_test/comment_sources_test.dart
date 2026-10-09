@@ -1,3 +1,4 @@
+import 'repository_fixture.dart';
 // ignore_for_file: avoid_print
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,9 +21,7 @@ void main() {
         await Storage.init();
         final prelude = await rootBundle.loadString('assets/js/runtime.js');
         for (final package in ['linovelib', 'picacg']) {
-          final script = await rootBundle.loadString(
-            'assets/extensions/$package.js',
-          );
+          final script = await repositoryFixture(package);
           final service = ExtensionService(
             meta: ExtensionMeta.parse(script)!,
             script: script,

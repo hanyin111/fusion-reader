@@ -2,7 +2,7 @@ name: fusion_reader
 description: "FusionReader (聚阅) — manga / novel / anime aggregate reader with Miru-compatible JS extensions."
 publish_to: 'none'
 
-version: 1.3.8+12
+version: 1.4.0+13
 
 environment:
   sdk: ^3.12.2
@@ -69,7 +69,6 @@ flutter:
 
   assets:
     - assets/js/
-    - assets/extensions/
     - assets/licenses/
     - assets/fonts/OFL-NotoSerifCJK.txt
 

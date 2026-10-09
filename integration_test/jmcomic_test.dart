@@ -1,3 +1,4 @@
+import 'repository_fixture.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -188,9 +189,7 @@ void main() {
             await request.response.close();
           }
         });
-        final original = await rootBundle.loadString(
-          'assets/extensions/jmcomic.js',
-        );
+        final original = await repositoryFixture('jmcomic');
         final script =
             '''
 $original
@@ -326,9 +325,7 @@ __ExtClass.prototype.request = function(url, options) {
       await tester.runAsync(() async {
         await Storage.init();
         await Hive.box('extension_settings').clear();
-        final script = await rootBundle.loadString(
-          'assets/extensions/jmcomic.js',
-        );
+        final script = await repositoryFixture('jmcomic');
         final service = ExtensionService(
           meta: ExtensionMeta.parse(script)!,
           script: script,

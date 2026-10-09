@@ -33,6 +33,7 @@ migrate_working_dir/
 /build/
 /coverage/
 /backups/
+/extensions-project/
 /server/data/
 /admin/.venv/
 /admin/*.csv

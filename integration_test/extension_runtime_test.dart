@@ -123,7 +123,7 @@ void main() {
     );
   }
   testWidgets(
-    'all sources load, and multiple JS contexts browse/search independently',
+    'installed sources load offline, and multiple JS contexts browse/search independently',
     (tester) async {
       await tester.pumpWidget(
         const MaterialApp(home: Scaffold(body: Text('脚本兼容性检查'))),
@@ -133,15 +133,17 @@ void main() {
       late ExtensionService first;
       late ExtensionService second;
       await tester.runAsync(() async {
-        debugPrint('Runtime test: initializing bundled extensions');
+        debugPrint('Runtime test: initializing cached installed extensions');
         await Storage.init();
         await manager.init();
-        expect(manager.all.length, ExtensionManager.bundledPackages.length);
+        expect(manager.all.length, Storage.installedScripts().length);
         expect(manager.loadErrors, isEmpty);
         expect(manager.all.every((service) => service.loaded), isTrue);
-        debugPrint('Runtime test: all bundled extensions initialized');
-        for (final package in ExtensionManager.bundledPackages) {
-          await manager.setDisabled(package, true);
+        debugPrint(
+          'Runtime test: installed extensions initialized without repository requests',
+        );
+        for (final service in manager.all) {
+          await manager.setDisabled(service.meta.package, true);
         }
 
         server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
@@ -158,6 +160,20 @@ void main() {
         await manager.installFromScript(fixture('runtime_beta', '运行测试乙', url));
         first = manager.byPackage('runtime_alpha')!;
         second = manager.byPackage('runtime_beta')!;
+        final previousScript = Storage.installedScripts()['runtime_alpha'];
+        await expectLater(
+          manager.installFromScript(
+            fixture(
+              'runtime_alpha',
+              '更新测试',
+              url,
+            ).replaceFirst('this.loads++;', 'throw new Error("坏更新");'),
+          ),
+          throwsA(isA<ExtensionException>()),
+        );
+        expect(manager.byPackage('runtime_alpha'), same(first));
+        expect(Storage.installedScripts()['runtime_alpha'], previousScript);
+        expect(first.loaded, isTrue);
         debugPrint('Runtime test: checking concurrent native bridges');
         final lists = await Future.wait([first.latest(1), second.latest(2)]);
         expect(lists[0].single.url, '/runtime_alpha/1');

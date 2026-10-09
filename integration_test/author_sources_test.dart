@@ -1,3 +1,4 @@
+import 'repository_fixture.dart';
 // Public catalogue checks; no account credentials or reading history needed.
 // ignore_for_file: avoid_print
 import 'package:flutter/material.dart';
@@ -21,9 +22,7 @@ void main() {
         await Storage.init();
         final prelude = await rootBundle.loadString('assets/js/runtime.js');
         for (final package in ['linovelib', 'weebcentral']) {
-          final script = await rootBundle.loadString(
-            'assets/extensions/$package.js',
-          );
+          final script = await repositoryFixture(package);
           final service = ExtensionService(
             meta: ExtensionMeta.parse(script)!,
             script: script,

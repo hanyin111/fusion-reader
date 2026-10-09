@@ -1,198 +1,96 @@
 <p align="center">
-  <img src="assets/icon/whitehair-girl-1024.png" width="160" alt="FusionReader">
+  <img src="assets/icon/whitehair-girl-1024.png" width="128" alt="聚阅图标">
 </p>
 
 # FusionReader 聚阅
 
-漫画 / 小说 / 动画 **三合一聚合阅读器**，使用 Flutter 构建，参考 [Miru Project](https://github.com/miru-project/miru-app) 设计，扩展格式与 Miru 兼容。
+漫画、小说、动画放在同一个书架里。聚阅使用 Flutter 构建，支持在线阅读、本地文件、离线缓存，以及跨设备迁移书架和阅读进度。
 
-## 特性
+[下载正式版](https://github.com/hanyin111/fusion-reader/releases/latest) · [插件网页](https://hanyin111.github.io/fusion-reader-extensions/) · [独立插件项目](https://github.com/hanyin111/fusion-reader-extensions)
 
-- 📚 **统一书架** — 漫画、小说、动画收藏在同一个书架，支持按类型筛选、阅读进度记忆
-- 🕘 **历史记录** — 书架右上角打开，浏览和阅读过的作品即使未收藏也能找回；支持类型筛选、继续阅读、单条删除并撤销、清空历史
-- 🔄 **JSON 数据迁移** — 设置 → 数据迁移 → 导入与导出，迁移书架、浏览历史和漫画页码 / 小说段落 / 视频播放进度；合并去重，保留较新的记录
-- ☁️ **账号与手动同步** — 激活码注册，支持本地上传云端、云端下载本地两个覆盖方向；配套轻量 SQLite 服务
-- 🖋️ **内置中文衬线字体** — 小说“衬线”选项随程序打包 Noto Serif CJK SC，Windows、iOS 等平台不再依赖系统字体
-- 📥 **离线阅读** — 缓存章节时一并保存作品详情及完整目录，断网可打开目录进入已缓存章节；旧缓存先显示已下载章节，联网打开作品后自动补全目录
-- 🧩 **Miru 兼容 JS 扩展系统** — 扩展是带 `==MiruExtension==` 头部的 JS 脚本，QuickJS 引擎沙箱运行，可从 URL / 粘贴脚本安装新源（兼容 Miru 扩展仓库的 raw 链接）
-- 📖 **三种阅读器** — 漫画（翻页 / 条漫双模式、缩放）、小说（上下滚动 / 左右翻页、字号调节、章节导航）、视频（media_kit，支持 HLS/MP4，全平台硬解）
-- ✍️ **同作者作品** — 在小说/漫画详情页点击作者，在当前扩展中查找其他作品；多位作者可分别点击
-- 💬 **阅读评论** — 哔哩轻小说支持目录和阅读器内的章节评论；哔咔支持作品评论和回复（各章节共用），可分页、刷新，剧透评论先折叠
-- 🌐 **内置 10 个源**，覆盖漫画、小说和动画
-- 💻 **全平台** — Windows / Android / iOS / macOS / Linux
+## 下载与安装
 
-## 内置源状态（2026-07 实测，系统代理 Clash 环境下）
+| 平台 | 发布文件 | 安装方式 |
+| --- | --- | --- |
+| Android | `FusionReader-版本-android-arm64-v8a.apk` 等 | 常见手机选 arm64-v8a；更新时选择与已安装版本相同的架构 |
+| Windows | `FusionReader-版本-windows-x64.zip` | 完整解压后运行 `fusion_reader.exe`，保留同目录的文件 |
+| iOS | `FusionReader-ios-unsigned.ipa` | 未签名 IPA，需要自行签名后安装 |
+| Linux | `FusionReader-linux-x64.tar.gz` | 解压运行；系统需要 GTK、mpv 和 libsecret，账号凭据存储需要系统 keyring |
 
-| 类目 | 源 | 状态 | 实测结果 |
-|---|---|---|---|
-| 漫画 | MangaDex | ✅ | 827 话，首页图片实测下载 1055KB |
-| 漫画 | WeebCentral | ✅ | Naruto 701 话完整，图片 307KB |
-| 漫画 | 哔咔漫画 | ⚙️ | 签名链路已验证，需在扩展设置填自己的帐号 |
-| 漫画 | 禁漫天堂 | 🧪 | 手机 App 接口适配，自动获取接口域名、签名解密与图片还原 |
-| 小说 | ESJ Zone | ✅ | 40 本/页，45 章，正文 6190 字（登录已实测：真实账号登录成功，「我的收藏」频道可拉取账号收藏；无封面，站点封面为JS注入） |
-| 小说 | Project Gutenberg | ✅ | 全文 55.6 万字 |
-| 小说 | Royal Road | ✅ | 109 章，正文 4.2 万字 |
-| 小说 | 哔哩轻小说 | ⚠️ | 浏览/详情/正文可用；搜索被 JS 守卫拦截，降级为榜单内标题匹配 |
-| 动画 | 樱花动漫 (yhdm.one) | ✅ | **实测起播 49ms**，8 条线路自动探测，13 个分类频道 |
-| 动画 | Internet Archive | ✅ | **实测起播 39ms** |
+macOS 构建暂不发布，修复后再补。历史安装包保留为发布草稿，不占用正式版下载列表。
 
-> 「实测起播」指测试真的把流解码出了画面（position > 0），而不只是拿到了 URL。
-> 所有源可在「扩展」页随时启用/禁用，并配置帐号等来源设置。
+Android 使用固定签名密钥。之前使用临时签名的旧包无法直接覆盖安装；遇到签名冲突时，先导出书架和历史，再重装并导入。固定签名版本之间可正常更新。
 
-哔哩轻小说正文加载已于 2026-10-07 更新：使用手机 UA、手机设备参数和真实浏览器会话，先访问目录执行站点脚本，再读取正文并合并章内分页。过滤隐藏重复段落，遇到截断提示会报错，不再把预览保存成完整章节。旧版含截断提示的离线缓存会在阅读时重新拉取。Windows 已实测《Re:从零开始的异世界生活》第一章全部 8 页（29,306 字），插图章 8 张图片及首图下载。
+## 插件安装与更新
 
-Windows 需要 Microsoft Edge WebView2 运行时。Android、iOS、macOS 已接入浏览器加载；Linux 暂不支持此源的浏览器正文加载。自行安装的同名脚本会覆盖内置源，需同步更新为 `assets/extensions/linovelib.js`。
+从 **1.4.0** 开始，应用和来源插件分别发布。本体提供阅读器、书架和脚本运行环境；具体站点的搜索、目录、正文及评论由插件提供。
 
-### 联网方式
+1. 打开「扩展 → 打开插件仓库」，选择需要的插件安装。
+2. 网站接口变化后，在同一页面刷新，点击单个插件的「更新」，或「更新已安装插件」。无需重装应用。
+3. 从旧版升级时，点击「恢复旧版插件」下载原来的来源。书架、历史和插件账号设置继续保留；第一次恢复需要联网。自行安装的脚本继续使用。
 
-应用依据设备当前网络、运行环境和插件的默认适配规则联网。设置页的代理配置及扩展页的代理/直连选择已移除，启动时会清理以前保存的手动代理地址和来源路由覆盖。桌面环境中的 `HTTP_PROXY` / `HTTPS_PROXY` 仍自动识别。
+插件下载后保存到本机，应用启动不会等待仓库联网。已缓存的章节和目录仍可离线阅读。插件更新会校验文件大小、SHA-256 和脚本信息，失败时保留原插件。应用也保留 URL 和粘贴脚本安装入口。
 
-- 扩展头 `@network direct|proxy|auto` 声明内部默认路由
-- 扩展内 `this.request(url, { netMode: 'direct' })` 可为单个请求指定路由
-- `watch()` 返回 `netMode` 可让**播放/图片下载**走与网页抓取不同的路由
+默认仓库索引：
 
-樱花动漫就是混合案例：网页 HTML 走代理，视频 CDN 直连——封面图、m3u8 探测、mpv 播放三者会各自使用正确的出口。
+```text
+https://hanyin111.github.io/fusion-reader-extensions/index.json
+```
 
-### 禁漫天堂插件
+[插件网页](https://hanyin111.github.io/fusion-reader-extensions/)支持分类、搜索和复制安装链接。分发方式参考 [Mihon](https://github.com/mihonapp/mihon) 和 [Aidoku](https://github.com/Aidoku-Community/sources) 的独立来源仓库；聚阅使用 FusionReader / Miru 格式的 JavaScript 脚本，不直接加载 APK 或 WASM 插件。来源可用性取决于站点和当前网络，具体维护在独立插件项目进行。
 
-参照 [Aidoku Community 的 zh.jmcomic 源码](https://github.com/Aidoku-Community/sources/tree/main/sources/zh.jmcomic) 接入手机 App 接口，网页地址仍为 `https://18comic.vip`。接口域名从公开配置自动获取，支持最新列表、观看/喜欢排行、搜索、作品 ID 或作品链接查询、作者搜索、详情及章节阅读。此方式避免直接解析受 Cloudflare 检查的网页，但接口仍可能因网络、站点策略或协议变化而不可用。
+## 阅读与数据
 
-在扩展设置中可选择图片线路 1–4（默认 3），也可手动填写 App 接口域名。图片按章节 ID 和文件名计算分块数，在后台还原；封面和 GIF 保持原图。在线图片缓存和离线下载共用图片处理，离线内容保存还原后的图片及完整目录。协议参考代码的 MIT 许可随应用打包在 `assets/licenses/Aidoku-sources-MIT.txt`。
+- **统一书架与历史**：按漫画、小说、动画筛选；未收藏的作品也会保留浏览历史和阅读进度。
+- **小说阅读**：上下滚动或左右翻页，支持字号、字体、章节导航和进度恢复。中间点击打开菜单时，正文位置保持不变；中文衬线字体随应用打包。
+- **漫画与动画**：漫画翻页、条漫和缩放，动画支持 HLS / MP4 播放及进度记忆。
+- **离线缓存**：下载章节时一起保存作品详情和完整目录，断网后可进入已下载章节；未下载内容仍需联网。
+- **同作者作品与评论**：详情页点击作者进行搜索；支持评论的插件会在目录或阅读器提供入口。章节评论与作品评论分别标注。
+- **本地文件**：导入本地书籍、漫画和视频，与在线作品统一管理。
 
-## 构建
+在「设置 → 数据迁移 → 导入与导出」导出 JSON，再在另一台设备导入。导入按来源和作品去重，合并书架、浏览历史及漫画页码、小说位置、视频进度，保留较新的记录。文件不包含本地书籍、离线缓存、插件脚本或登录凭据；另一台设备需要安装对应插件。
 
-### 小说左右翻页
+账号采用一次性激活码注册。在「设置 → 账号与同步」选择 **本地同步云端**（覆盖云端）或 **云端同步本地**（覆盖本机），同步前会提示。删书后先上传，再在其他设备下载。本地文件和插件账号不上传，退出登录保留本机数据。自建版本需配置同步服务，见 [账号同步说明](docs/account-sync.md)；服务端与独立管理工具分别见 [server](server/README.md) 和 [admin](admin/README.md)。
 
-在小说阅读器打开「阅读设置 → 阅读模式」，选择「左右翻页」。左右滑动或点击屏幕两侧翻页，点击中间显示或隐藏菜单；菜单覆盖在正文上方，显示或隐藏不会改变文字位置和分页。桌面端也支持方向键和 Page Up / Page Down。翻到章节边界后继续翻页，会进入相邻章节；往前翻打开上一章末页。
+## 项目结构
 
-正文按屏幕大小、字体和字号自动分页，插图单独占页。进度记录段落及段内文字位置，切换滚动模式、调整排版、旋转屏幕或重新打开时恢复到对应文字。原有记录仍可读取，JSON 迁移也包含段内位置。
+```text
+fusion-reader/                  应用本体
+  lib/pages/                    界面与阅读器
+  lib/services/                 书架、插件安装、脚本运行时、网络、账号
+  assets/js/runtime.js          插件公共桥接接口
+  assets/fonts/                 随包字体
+  integration_test/             原生运行时和功能回归
+  server/                       可选的 SQLite 同步服务
+  admin/                        独立账号管理工具
 
-### 在设备间迁移书架与历史
+fusion-reader-extensions/       单独的 GitHub 项目
+  sources/                      站点插件脚本
+  public/                       GitHub Pages 网页
+  tools/                        索引生成与校验
+  tests/                        插件业务测试
+```
 
-1. 在原设备打开「设置 → 数据迁移 → 导入与导出」，点击「导出 JSON」，选择保存位置。
-2. 将生成的 `FusionReader-日期时间.json` 文件传到另一台设备。
-3. 在新设备的同一页面点击「导入 JSON」，选择文件，核对数量后点击「合并导入」。
+应用不再包含站点插件脚本。iOS / macOS 使用 JavaScriptCore，其余平台使用 QuickJS。插件脚本开发和发布见 [独立项目 README](https://github.com/hanyin111/fusion-reader-extensions#readme)。扩展新的原生能力或修改桥接接口时仍需更新应用本体。
 
-导入保留当前设备的收藏和历史。同一来源、同一作品自动去重，阅读进度按记录时间保留较新的一份；仅浏览的记录不会清除已经保存的章节进度。重复导入不会产生重复记录。建议设备时间保持正确。
+## 开发与发布
 
-文件保存网络作品的标题、封面链接、来源、作品链接及章节和位置，包含未收藏作品的历史；自装插件需在新设备安装，缺少插件时数据仍会保留。本地书籍、离线内容、插件脚本、账号和应用设置不在迁移范围内。只浏览没有开始阅读的记录仍作为浏览历史恢复。
+使用 Flutter **3.44.2** 或兼容版本，安装目标平台工具链。
 
-备份为 UTF-8 JSON，使用 `format: FusionReader.library` 和 `schemaVersion: 1` 标识。导入前会校验整个文件，拒绝损坏、未知版本、错误字段及超过 20 MB / 50000 条记录的文件。账号同步复用这一格式，JSON 导出不包含登录凭据。
-
-### 账号与同步
-
-在「设置 → 账号与同步」用维护者提供的一次性激活码注册。登录后选择「本地同步云端」上传并覆盖云端，或「云端同步本地」下载并覆盖本机。覆盖前会提示影响，不自动合并：删书后先上传，再在另一台设备下载。本地文件、离线缓存和插件账号不上传；退出账号保留本机数据。
-
-服务地址不写入公开源码或文档，通过 `FUSION_SYNC_URL` 构建参数注入，GitHub Actions 使用同名仓库 Secret。未注入地址的自建版本仍可阅读和使用 JSON 迁移，账号功能会明确显示未配置。域名作为联网目标仍可从发布的客户端中提取，因此需要 HTTPS、认证和服务端访问保护。详细规则与接口见 [账号同步说明](docs/account-sync.md)，维护见 [服务端说明](server/README.md)。
-
-### 离线阅读
-
-章节下载成功后，会保存作品标题、简介、作者及完整章节分组和顺序。断网打开作品时先显示本地目录，已缓存的章节可直接阅读；未缓存的章节仍需要联网。旧版本的下载无需重新下载正文，联网打开作品后会自动补全完整目录。删除最后一个缓存章节或清空离线缓存时，对应目录也会删除。
-
-### 编译应用
-
-安卓发布包使用固定签名密钥。CI 从 `ANDROID_DEBUG_KEYSTORE_B64` 恢复已有密钥，以 `FUSION_ANDROID_KEYSTORE` 明确指定文件；本地默认使用 `~/.android/debug.keystore`。缺少密钥或证书与 `android/signing-certificate.sha256` 不一致时拒绝构建，不会自动创建新发布密钥。私钥不提交到仓库。
-
-发布前会使用 Android SDK 的 `apksigner` 验证 APK 签名，并检查包名、版本号和 ABI。v1.3.4 及部分旧版曾使用构建环境临时生成的签名，无法被固定签名版本覆盖安装；从这些旧版迁移时，先导出书架与历史，再重装一次并导入。之后同一架构的后续版本使用同一密钥，可正常升级。
-
-前置：Flutter 3.44+（stable channel）。
-
-```bash
+```sh
 flutter pub get
-
-# Windows（需 Visual Studio C++ 工具链及 C++ ATL 组件，nuget.exe 需在 PATH 中）
+flutter analyze
+flutter test
 flutter build windows --release
-
-# Android（需 Android SDK）
 flutter build apk --release --split-per-abi
-
-# Linux（需 ninja-build libgtk-3-dev libmpv-dev libsecret-1-dev libjsoncpp-dev；账号存储需系统 keyring）
 flutter build linux --release
-
-# macOS / iOS（需 Xcode）
-flutter build macos --release
 flutter build ios --release --no-codesign
 ```
 
-或推送 `v*` 标签 / 手动触发 GitHub Actions（`.github/workflows/build.yml`），自动构建全部 5 个平台的产物。
+Windows 需要 Visual Studio C++、ATL 和 NuGet；Linux 需要 GTK、mpv、libsecret 开发依赖；iOS 需要 Xcode。真实来源的联网集成检查从独立仓库获取脚本，普通测试和 CI 运行时回归使用本地模拟脚本。
 
-## 源验证测试
+GitHub Actions 构建 Android、iOS、Linux。Android 发布前检查固定签名、包名、版本及 ABI；iOS 先运行模拟器回归，再生成 IPA。Windows 本地构建后上传。正式发布流程确认所需安装包齐全，再公开新版本，并将旧发布改为草稿保留。macOS 的独立手动工作流保留，暂不参与正式发布。
 
-```bash
-flutter test integration_test/sources_test.dart -d windows
+账号服务地址通过 `FUSION_SYNC_URL` 构建参数注入，Actions 使用同名 Secret。Android 签名使用 `ANDROID_DEBUG_KEYSTORE_B64`，证书指纹保存在 `android/signing-certificate.sha256`；私钥和服务器凭据不提交。未配置同步地址的版本仍可阅读及使用 JSON 迁移。
 
-# 哔哩轻小说正文、长章节分页和插图实测（使用独立测试数据）
-flutter test integration_test/linovelib_test.dart -d windows
-
-# 旧截断缓存与完整离线缓存回归（独立测试进程）
-flutter test integration_test/linovelib_cache_test.dart -d windows
-
-# 离线分页逻辑回归（需 Node.js）
-node test/linovelib_test.mjs
-```
-
-对每个已启用扩展真实联网跑 `latest → search → detail → watch` 全链路，并断言漫画/小说/动画每类至少 2 个源可用。
-
-## 扩展开发
-
-扩展是单个 `.js` 文件（与 Miru 格式一致）：
-
-```js
-// ==MiruExtension==
-// @name         MySource
-// @package      mysource
-// @version      v1.0.0
-// @type         manga        // manga | fikushon(小说) | bangumi(动画)
-// @webSite      https://example.com
-// ==/MiruExtension==
-
-export default class extends Extension {
-  async latest(page) { /* -> [{title, url, cover}] */ }
-  async search(kw, page) { /* -> [{title, url, cover}] */ }
-  async detail(url) { /* -> {title, cover, desc, authors:[{name,id?,url?}], episodes:[{title, urls:[{name,url}]}]} */ }
-  async searchAuthor(author, page) { /* 可选：按作者 ID/链接查询，返回 [{title,url,cover}] */ }
-  // 声明 @comments chapter 或 @comments work 后可实现只读评论：
-  async comments(workUrl, chapterUrl, page, parentId) {
-    /* -> {comments:[{id,username,text,time?,likes?,replyCount?,spoiler?,hidden?,pinned?,images?}],hasMore,total?,headers?} */
-  }
-  async watch(url) {
-    // 漫画: {urls:[...], headers?}   小说: {content:[...]}   动画: {type:'hls'|'mp4', url, headers?}
-  }
-}
-```
-
-运行时提供 `this.request` / `querySelector` / `querySelectorAll` / `getAttributeText` / `queryXPath` / `getSetting` 等 Miru 同款 API。
-
-`authors` 是作品作者，区别于扩展头部的开发者 `@author`。内置源使用站点的作者目录或作者筛选；未实现 `searchAuthor` 的旧扩展会调用 `search(author.name, page, {author})`。旧扩展简介开头的 `作者：姓名` / `Author: name` 也兼容点击查询，结果取决于该扩展的搜索能力。
-
-评论默认不启用。扩展头的 `@comments chapter` / `@comments work` 分别表示章节评论和整部作品评论，作品评论在详情页与阅读器中明确标注。当前功能仅查看评论，哔咔沿用扩展设置中的帐号认证；回复查询传入 `parentId`。未更新的同名自装插件会覆盖内置脚本，需同步更新才能显示评论入口。
-
-修改前可运行 `./scripts/backup.ps1 -Label comments`（PowerShell）。脚本保存当前源码及 Windows 程序，完整读取检查新压缩包后再删除旧备份，只保留最近一份；失败时保留旧备份。备份不包含编译缓存或更早的备份文件。
-
-## 架构说明
-
-iOS/macOS 使用 JavaScriptCore，其他平台使用 QuickJS。每个 Apple 平台扩展单独注册原生回调，避免多个插件之间串线；异步结果保留在 JS 上下文中，不把未保护的原生对象指针带过 Dart 异步等待。关闭扩展时先取消未完成的调用和轮询，再释放引擎。设置页显示安装包的真实版本号和构建号。
-
-GitHub Actions 的 iOS 构建会先运行模拟器测试，覆盖全部内置扩展初始化、多插件与同插件并发、内存回收、超时恢复、请求中关闭和重新启用扩展、浏览/搜索、正文和评论，再生成未签名 IPA。macOS 构建还会用相同的 JavaScriptCore 后端运行 AOT 编译的回归测试：
-
-```bash
-flutter drive --profile -d macos --target integration_test/extension_runtime_test.dart --driver test_driver/extension_runtime_test.dart
-```
-
-模拟器和 macOS 验证不能代替 iPhone 实机的联网阅读测试。
-
-Mihon 插件是 Android APK（Dalvik 字节码），技术上无法在 Windows/iOS 等平台加载，因此本项目与 Miru 一样采用跨平台 JS 扩展方案，并保持与 Miru 扩展格式互通。
-
-```
-lib/
-  models/           数据模型（MediaItem、MediaDetail、Watch 结果等）
-  services/
-    extension_runtime.dart   QuickJS 运行时 + Dart 桥（网络/HTML解析/设置）
-    extension_manager.dart   扩展加载、安装、启停
-    storage.dart             Hive 存储（书架/历史/设置）
-    network.dart             dio + 代理
-  pages/            书架 / 发现 / 详情 / 三种阅读器 / 扩展管理 / 设置
-assets/
-  js/runtime.js     JS 侧 Extension 基类与异步桥
-  extensions/*.js   内置扩展源
-```
+修改前可运行 `scripts/backup.ps1` 创建本地备份。验证新备份完整后才删除旧备份，只保留最近一份。

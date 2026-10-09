@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/extension_manager.dart';
 import '../services/storage.dart';
 import '../widgets/media_card.dart';
+import 'extension_repository_page.dart';
 
 class ExtensionsPage extends StatelessWidget {
   const ExtensionsPage({super.key});
@@ -23,10 +24,24 @@ class ExtensionsPage extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          IconButton(
+            tooltip: '插件仓库',
+            icon: const Icon(Icons.extension_outlined),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ExtensionRepositoryPage(),
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-              child: const Text('安装')),
+            onPressed: () => Navigator.pop(c, ctrl.text.trim()),
+            child: const Text('安装'),
+          ),
         ],
       ),
     );
@@ -34,13 +49,15 @@ class ExtensionsPage extends StatelessWidget {
     try {
       final meta = await ExtensionManager.instance.installFromUrl(url);
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('已安装扩展: ${meta.name}')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已安装扩展: ${meta.name}')));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('安装失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('安装失败: $e')));
       }
     }
   }
@@ -63,10 +80,14 @@ class ExtensionsPage extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(c, ctrl.text),
-              child: const Text('安装')),
+            onPressed: () => Navigator.pop(c, ctrl.text),
+            child: const Text('安装'),
+          ),
         ],
       ),
     );
@@ -74,13 +95,15 @@ class ExtensionsPage extends StatelessWidget {
     try {
       final meta = await ExtensionManager.instance.installFromScript(script);
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('已安装扩展: ${meta.name}')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已安装扩展: ${meta.name}')));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('安装失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('安装失败: $e')));
       }
     }
   }
@@ -88,8 +111,9 @@ class ExtensionsPage extends StatelessWidget {
   Future<void> _editSettings(BuildContext context, ExtensionMeta meta) async {
     final schemas = Storage.extSettingSchemas(meta.package);
     if (schemas.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('该扩展没有可配置项')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('该扩展没有可配置项')));
       return;
     }
     final controllers = {
@@ -127,9 +151,14 @@ class ExtensionsPage extends StatelessWidget {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: const Text('取消'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(c, true), child: const Text('保存')),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('保存'),
+          ),
         ],
       ),
     );
@@ -143,8 +172,9 @@ class ExtensionsPage extends StatelessWidget {
       await Storage.setExtSetting(meta.package, '__token', '');
       await ExtensionManager.instance.reload(meta.package);
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('设置已保存')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('设置已保存')));
       }
     }
     for (final c in controllers.values) {
@@ -179,11 +209,26 @@ class ExtensionsPage extends StatelessWidget {
             itemCount: list.length + 1,
             itemBuilder: (context, i) {
               if (i == 0) {
-                return const Padding(
+                return Padding(
                   padding: EdgeInsets.fromLTRB(16, 12, 16, 4),
-                  child: Text(
-                    '扩展为 Miru 兼容的 JS 脚本。标有 ⚠ 的扩展加载失败。',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        '插件已与应用分开发布。安装与更新请打开插件仓库；⚠ 表示插件加载失败。',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ExtensionRepositoryPage(),
+                          ),
+                        ),
+                        icon: const Icon(Icons.extension_outlined),
+                        label: const Text('打开插件仓库'),
+                      ),
+                    ],
                   ),
                 );
               }
@@ -202,29 +247,54 @@ class ExtensionsPage extends StatelessWidget {
                         ? Icon(Icons.extension, color: typeColor(meta.type))
                         : CachedNetworkImage(
                             imageUrl: meta.icon,
-                            errorWidget: (c, u, e) =>
-                                Icon(Icons.extension, color: typeColor(meta.type)),
+                            errorWidget: (c, u, e) => Icon(
+                              Icons.extension,
+                              color: typeColor(meta.type),
+                            ),
                           ),
                   ),
                 ),
                 title: Row(
                   children: [
-                    Flexible(child: Text(meta.name, overflow: TextOverflow.ellipsis)),
+                    if (manager.hasUpdate(meta.package))
+                      IconButton(
+                        tooltip: '插件有更新',
+                        icon: const Icon(Icons.system_update_alt),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const ExtensionRepositoryPage(),
+                          ),
+                        ),
+                      ),
+                    Flexible(
+                      child: Text(meta.name, overflow: TextOverflow.ellipsis),
+                    ),
                     const SizedBox(width: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
                       decoration: BoxDecoration(
                         color: typeColor(meta.type).withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text(meta.type.label,
-                          style: TextStyle(fontSize: 10, color: typeColor(meta.type))),
+                      child: Text(
+                        meta.type.label,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: typeColor(meta.type),
+                        ),
+                      ),
                     ),
                     if (error != null && !disabled)
                       const Padding(
                         padding: EdgeInsets.only(left: 6),
                         child: Tooltip(
-                            message: '加载失败', child: Text('⚠', style: TextStyle(fontSize: 14))),
+                          message: '加载失败',
+                          child: Text('⚠', style: TextStyle(fontSize: 14)),
+                        ),
                       ),
                   ],
                 ),
@@ -235,8 +305,9 @@ class ExtensionsPage extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      fontSize: 12,
-                      color: error != null && !disabled ? Colors.redAccent : null),
+                    fontSize: 12,
+                    color: error != null && !disabled ? Colors.redAccent : null,
+                  ),
                 ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -249,13 +320,17 @@ class ExtensionsPage extends StatelessWidget {
                       ),
                     Switch(
                       value: !disabled,
-                      onChanged: (v) => manager.setDisabled(meta.package, !v),
+                      onChanged: manager.isInstalling(meta.package)
+                          ? null
+                          : (v) => manager.setDisabled(meta.package, !v),
                     ),
                     if (userInstalled)
                       IconButton(
                         tooltip: '卸载',
                         icon: const Icon(Icons.delete_outline),
-                        onPressed: () => manager.uninstall(meta.package),
+                        onPressed: manager.isInstalling(meta.package)
+                            ? null
+                            : () => manager.uninstall(meta.package),
                       ),
                   ],
                 ),
