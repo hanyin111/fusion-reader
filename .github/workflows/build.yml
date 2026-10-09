@@ -70,6 +70,7 @@ jobs:
       - name: Verify final APK signatures and versions
         run: |
           BUILD_TOOLS=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+          echo "Android build tools: $BUILD_TOOLS"
           python3 scripts/verify_android_apks.py --build-tools "$BUILD_TOOLS"
       - uses: actions/upload-artifact@v4
         with:

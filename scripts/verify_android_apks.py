@@ -5,6 +5,8 @@ inspection. The pinned fingerprint is public; no private key is read here.
 """
 
 import argparse
+import base64
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -16,19 +18,23 @@ ABI_OFFSETS = {"armeabi-v7a": 1000, "arm64-v8a": 2000, "x86_64": 3000}
 
 
 def check_signer(output, expected):
-    # SDK tools print v3.1 signers by their Android version range instead of
-    # "Signer #1". A fixed key can appear in both the v3 and v3.1 ranges.
-    signer_name = r"(?:#\d+|\(minSdkVersion=\d+(?: \(dev release=true\))?, maxSdkVersion=\d+\))"
-    hashes = re.findall(
-        rf"^Signer {signer_name} certificate SHA-256 digest:[ \t]*([a-fA-F0-9]{{64}})[ \t]*$",
-        output,
-        re.MULTILINE,
+    # --print-certs-pem exposes the actual DER certificate. SDK tools change
+    # display labels (Signer #1, V2 Signer, SDK ranges); those are not an API.
+    certificates = re.findall(
+        r"-----BEGIN CERTIFICATE-----(.*?)-----END CERTIFICATE-----",
+        output, re.DOTALL,
     )
-    if not hashes:
-        raise ValueError(f"Cannot read APK signer certificate from apksigner output:\n{output}")
-    signer_count = re.search(r"^Number of signers:[ \t]*(\d+)[ \t]*$", output, re.MULTILINE)
-    indexed_count = len(re.findall(r"^Signer #\d+ certificate SHA-256 digest:", output, re.MULTILINE))
-    if indexed_count > 1 or (signer_count is not None and int(signer_count[1]) != 1):
+    if not certificates:
+        raise ValueError("apksigner did not return a PEM signing certificate")
+    hashes = []
+    for certificate in certificates:
+        try:
+            der = base64.b64decode(re.sub(r"\s", "", certificate), validate=True)
+        except ValueError as error:
+            raise ValueError("apksigner returned an invalid PEM certificate") from error
+        hashes.append(hashlib.sha256(der).hexdigest())
+    signer_count = re.search(r"^Number of signers:[ \t]*(\d+)[ \t\r]*$", output, re.MULTILINE)
+    if signer_count is not None and int(signer_count[1]) != 1:
         raise ValueError("APK must have exactly one signing identity")
     if any(digest.lower() != expected for digest in hashes):
         raise ValueError(f"APK signing certificate differs from the fixed release certificate: {hashes}; expected {expected}")
@@ -56,7 +62,7 @@ def check_manifest(output, abi, version_name, base_code):
 
 def verify_apk(apk, tools, expected, abi, version_name, base_code):
     signature = subprocess.run(
-        [str(tools / "apksigner"), "verify", "--verbose", "--print-certs", str(apk)],
+        [str(tools / "apksigner"), "verify", "--verbose", "--print-certs-pem", str(apk)],
         check=True, capture_output=True, text=True,
     )
     print(f"Verifying {apk.name}:\n{signature.stdout}", flush=True)
