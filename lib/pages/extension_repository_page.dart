@@ -5,14 +5,15 @@ import '../services/extension_manager.dart';
 import '../services/extension_repository.dart';
 
 class ExtensionRepositoryPage extends StatefulWidget {
-  const ExtensionRepositoryPage({super.key});
+  final ExtensionManager? manager;
+  const ExtensionRepositoryPage({super.key, this.manager});
   @override
   State<ExtensionRepositoryPage> createState() =>
       _ExtensionRepositoryPageState();
 }
 
 class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
-  final manager = ExtensionManager.instance;
+  late final manager = widget.manager ?? ExtensionManager.instance;
   String query = '';
   MediaType? type;
   final Set<String> pending = {};
@@ -20,7 +21,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
   @override
   void initState() {
     super.initState();
-    manager.refreshRepository();
+    if (manager.hasRepository) manager.refreshRepository();
   }
 
   void message(String text) {
@@ -63,16 +64,31 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
 
   Future<void> editRepository() async {
     var address = manager.repositoryUrl;
+    final form = GlobalKey<FormState>();
     final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('插件仓库地址'),
-        content: TextFormField(
-          initialValue: address,
-          maxLines: 3,
-          onChanged: (value) => address = value,
-          decoration: const InputDecoration(
-            helperText: '填写可信仓库的 HTTPS index.json 地址',
+        content: Form(
+          key: form,
+          child: TextFormField(
+            initialValue: address,
+            autofocus: !manager.hasRepository,
+            keyboardType: TextInputType.url,
+            autocorrect: false,
+            enableSuggestions: false,
+            maxLines: 3,
+            onChanged: (value) => address = value,
+            validator: (value) {
+              if (value == null || value.trim().isEmpty) return '请填写插件仓库链接';
+              try {
+                repositoryUri(value);
+                return null;
+              } on FormatException catch (error) {
+                return error.message;
+              }
+            },
+            decoration: const InputDecoration(helperText: '填写仓库提供的 HTTPS 索引链接'),
           ),
         ),
         actions: [
@@ -80,12 +96,12 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
             onPressed: () => Navigator.pop(context),
             child: const Text('取消'),
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, defaultExtensionRepository),
-            child: const Text('使用默认仓库'),
-          ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, address.trim()),
+            onPressed: () {
+              if (form.currentState!.validate()) {
+                Navigator.pop(context, address.trim());
+              }
+            },
             child: const Text('保存'),
           ),
         ],
@@ -96,7 +112,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
       await manager.setRepository(value);
       message('插件仓库已更新');
     } catch (_) {
-      message('仓库地址无效或暂时无法连接，原仓库保留。');
+      message('无法保存仓库，请检查链接和网络后重试。');
     }
   }
 
@@ -127,141 +143,183 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
             ),
             IconButton(
               tooltip: '刷新仓库',
-              onPressed: manager.checkingRepository || busy
+              onPressed:
+                  !manager.hasRepository || manager.checkingRepository || busy
                   ? null
                   : manager.refreshRepository,
               icon: const Icon(Icons.refresh),
             ),
           ],
         ),
-        body: Column(
-          children: [
-            if (manager.checkingRepository || updating)
-              const LinearProgressIndicator(),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        body: !manager.hasRepository
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.extension_outlined, size: 48),
+                      const SizedBox(height: 16),
+                      const Text('先添加插件仓库', style: TextStyle(fontSize: 20)),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '手动填写仓库链接后，即可浏览、安装和更新插件。已安装的插件可以继续使用。',
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      if (manager.checkingRepository)
+                        const CircularProgressIndicator()
+                      else
+                        FilledButton.icon(
+                          onPressed: editRepository,
+                          icon: const Icon(Icons.link),
+                          label: const Text('填写仓库链接'),
+                        ),
+                    ],
+                  ),
+                ),
+              )
+            : Column(
                 children: [
-                  const Text('插件独立发布，更新不需要重新安装应用。下载后保存在本机，离线仍可使用。'),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      FilledButton.tonal(
-                        onPressed: busy || manager.checkingRepository
-                            ? null
-                            : () => update(),
-                        child: const Text('更新已安装插件'),
-                      ),
-                      OutlinedButton(
-                        onPressed: busy || manager.checkingRepository
-                            ? null
-                            : () => update(restore: true),
-                        child: const Text('恢复旧版插件'),
-                      ),
-                    ],
-                  ),
-                  if (manager.repositoryError != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10),
-                      child: Text(
-                        manager.repositoryError!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
+                  if (manager.checkingRepository || updating)
+                    const LinearProgressIndicator(),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('插件独立发布，更新不需要重新安装应用。下载后保存在本机，离线仍可使用。'),
+                        const SizedBox(height: 8),
+                        Text(
+                          manager.repositoryUrl,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                    ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    decoration: const InputDecoration(
-                      prefixIcon: Icon(Icons.search),
-                      hintText: '搜索插件名称或语言',
-                      border: OutlineInputBorder(),
-                    ),
-                    onChanged: (value) => setState(() => query = value),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      ChoiceChip(
-                        label: const Text('全部'),
-                        selected: type == null,
-                        onSelected: (_) => setState(() => type = null),
-                      ),
-                      for (final kind in MediaType.values)
-                        ChoiceChip(
-                          label: Text(kind.label),
-                          selected: type == kind,
-                          onSelected: (_) => setState(() => type = kind),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            FilledButton.tonal(
+                              onPressed: busy || manager.checkingRepository
+                                  ? null
+                                  : () => update(),
+                              child: const Text('更新已安装插件'),
+                            ),
+                            OutlinedButton(
+                              onPressed: busy || manager.checkingRepository
+                                  ? null
+                                  : () => update(restore: true),
+                              child: const Text('恢复旧版插件'),
+                            ),
+                          ],
                         ),
-                    ],
+                        if (manager.repositoryError != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 10),
+                            child: Text(
+                              manager.repositoryError!,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          decoration: const InputDecoration(
+                            prefixIcon: Icon(Icons.search),
+                            hintText: '搜索插件名称或语言',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) => setState(() => query = value),
+                        ),
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          children: [
+                            ChoiceChip(
+                              label: const Text('全部'),
+                              selected: type == null,
+                              onSelected: (_) => setState(() => type = null),
+                            ),
+                            for (final kind in MediaType.values)
+                              ChoiceChip(
+                                label: Text(kind.label),
+                                selected: type == kind,
+                                onSelected: (_) => setState(() => type = kind),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: entries.isEmpty
+                        ? Center(
+                            child: Text(
+                              manager.checkingRepository
+                                  ? '正在读取插件目录…'
+                                  : '暂无插件，请刷新仓库或调整筛选。',
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: entries.length,
+                            itemBuilder: (context, index) {
+                              final entry = entries[index];
+                              final installed = manager.byPackage(
+                                entry.package,
+                              );
+                              final needsUpdate = manager.hasUpdate(
+                                entry.package,
+                              );
+                              final compatible = entry.supports(
+                                manager.appVersion,
+                              );
+                              final loading =
+                                  pending.contains(entry.package) ||
+                                  manager.isInstalling(entry.package);
+                              return ListTile(
+                                leading: Icon(
+                                  entry.type == MediaType.novel
+                                      ? Icons.menu_book
+                                      : entry.type == MediaType.manga
+                                      ? Icons.collections_bookmark
+                                      : Icons.play_circle_outline,
+                                ),
+                                title: Text(entry.name),
+                                subtitle: Text(
+                                  '${entry.type.label} · ${entry.lang} · ${entry.version}${compatible ? '' : '\n需要应用 ${entry.minAppVersion} 或更新版本'}',
+                                ),
+                                trailing: loading
+                                    ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : FilledButton.tonal(
+                                        onPressed:
+                                            busy ||
+                                                !compatible ||
+                                                (installed != null &&
+                                                    !needsUpdate)
+                                            ? null
+                                            : () => install(entry),
+                                        child: Text(
+                                          installed == null
+                                              ? '安装'
+                                              : needsUpdate
+                                              ? '更新'
+                                              : '已安装',
+                                        ),
+                                      ),
+                              );
+                            },
+                          ),
                   ),
                 ],
               ),
-            ),
-            Expanded(
-              child: entries.isEmpty
-                  ? Center(
-                      child: Text(
-                        manager.checkingRepository
-                            ? '正在读取插件目录…'
-                            : '暂无插件，请刷新仓库或调整筛选。',
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: entries.length,
-                      itemBuilder: (context, index) {
-                        final entry = entries[index];
-                        final installed = manager.byPackage(entry.package);
-                        final needsUpdate = manager.hasUpdate(entry.package);
-                        final compatible = entry.supports(manager.appVersion);
-                        final loading =
-                            pending.contains(entry.package) ||
-                            manager.isInstalling(entry.package);
-                        return ListTile(
-                          leading: Icon(
-                            entry.type == MediaType.novel
-                                ? Icons.menu_book
-                                : entry.type == MediaType.manga
-                                ? Icons.collections_bookmark
-                                : Icons.play_circle_outline,
-                          ),
-                          title: Text(entry.name),
-                          subtitle: Text(
-                            '${entry.type.label} · ${entry.lang} · ${entry.version}${compatible ? '' : '\n需要应用 ${entry.minAppVersion} 或更新版本'}',
-                          ),
-                          trailing: loading
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : FilledButton.tonal(
-                                  onPressed:
-                                      busy ||
-                                          !compatible ||
-                                          (installed != null && !needsUpdate)
-                                      ? null
-                                      : () => install(entry),
-                                  child: Text(
-                                    installed == null
-                                        ? '安装'
-                                        : needsUpdate
-                                        ? '更新'
-                                        : '已安装',
-                                  ),
-                                ),
-                        );
-                      },
-                    ),
-            ),
-          ],
-        ),
       );
     },
   );

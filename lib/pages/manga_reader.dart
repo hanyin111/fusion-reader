@@ -8,6 +8,7 @@ import '../services/sources.dart';
 import '../services/storage.dart';
 import '../widgets/source_image.dart';
 import '../widgets/comments_button.dart';
+import '../widgets/manga_zoom_view.dart';
 
 class MangaReaderPage extends StatefulWidget {
   final MediaItem item;
@@ -34,6 +35,8 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   bool _webtoon = Storage.setting('mangaWebtoon', defaultValue: false) as bool;
   bool _showBar = true;
   int _page = 0;
+  int _zoomPercent = 100;
+  final _zoomKey = GlobalKey<MangaZoomViewState>();
 
   PageController? _pageCtrl;
 
@@ -107,6 +110,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   }
 
   Future<void> _load({bool restore = false}) async {
+    // Cached chapters can resolve before the loading frame is painted, reusing
+    // the same zoom view. Reset its transform explicitly when changing chapters.
+    _zoomKey.currentState?.reset();
     // Only the episode the reader was opened at resumes mid-chapter; moving to
     // another chapter starts it from the beginning.
     var startPage = 0;
@@ -121,6 +127,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       _watch = null;
       _error = null;
       _page = startPage;
+      _zoomPercent = 100;
     });
 
     try {
@@ -155,6 +162,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   }
 
   void _jumpTo(int page) {
+    _zoomKey.currentState?.reset();
     setState(() => _page = page);
     if (_webtoon) {
       if (_itemCtrl.isAttached) _itemCtrl.jumpTo(index: page);
@@ -195,9 +203,15 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                     )
                   : watch == null
                   ? const Center(child: CircularProgressIndicator())
-                  : _webtoon
-                  ? _buildWebtoon(watch)
-                  : _buildPaged(watch),
+                  : MangaZoomView(
+                      key: _zoomKey,
+                      onZoomChanged: (percent) {
+                        if (mounted) setState(() => _zoomPercent = percent);
+                      },
+                      builder: (canScroll) => _webtoon
+                          ? _buildWebtoon(watch, canScroll)
+                          : _buildPaged(watch, canScroll),
+                    ),
             ),
           ),
           if (_showBar) _buildTopBar(),
@@ -220,21 +234,23 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     );
   }
 
-  Widget _buildPaged(MangaWatch watch) {
+  Widget _buildPaged(MangaWatch watch, bool canScroll) {
     return PageView.builder(
+      physics: canScroll ? null : const NeverScrollableScrollPhysics(),
       controller: _pageCtrl,
       itemCount: watch.urls.length,
       onPageChanged: (i) {
+        _zoomKey.currentState?.reset();
         setState(() => _page = i);
         _scheduleSave(i);
       },
-      itemBuilder: (context, i) =>
-          InteractiveViewer(maxScale: 5, child: _image(watch.urls[i], watch)),
+      itemBuilder: (context, i) => _image(watch.urls[i], watch),
     );
   }
 
-  Widget _buildWebtoon(MangaWatch watch) {
+  Widget _buildWebtoon(MangaWatch watch, bool canScroll) {
     return ScrollablePositionedList.builder(
+      physics: canScroll ? null : const NeverScrollableScrollPhysics(),
       // Keyed per chapter so PageStorage cannot carry the previous chapter's
       // scroll offset into this one.
       key: ValueKey('webtoon|${_episode.url}'),
@@ -282,6 +298,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                   color: Colors.white,
                 ),
                 onPressed: () {
+                  _zoomKey.currentState?.reset();
                   // Carry the current page across the mode switch.
                   final page = _page;
                   setState(() {
@@ -313,38 +330,77 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         color: Colors.black.withValues(alpha: 0.7),
         child: SafeArea(
           top: false,
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                tooltip: '上一章',
-                icon: const Icon(Icons.skip_previous, color: Colors.white),
-                onPressed: _index > 0 ? () => _go(-1) : null,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Flexible(
+                    child: Text(
+                      '双指缩放\n双击放大/还原',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: '缩小',
+                    icon: const Icon(Icons.zoom_out, color: Colors.white),
+                    onPressed: _zoomPercent > 100
+                        ? () => _zoomKey.currentState?.zoomOut()
+                        : null,
+                  ),
+                  TextButton(
+                    onPressed: () => _zoomKey.currentState?.reset(),
+                    child: Text(
+                      '$_zoomPercent%',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: '放大',
+                    icon: const Icon(Icons.zoom_in, color: Colors.white),
+                    onPressed: _zoomPercent < 500
+                        ? () => _zoomKey.currentState?.zoomIn()
+                        : null,
+                  ),
+                ],
               ),
-              Expanded(
-                child: watch.urls.length < 2
-                    ? const SizedBox()
-                    : Slider(
-                        value: (_page + 1).toDouble().clamp(
-                          1,
-                          watch.urls.length.toDouble(),
-                        ),
-                        min: 1,
-                        max: watch.urls.length.toDouble(),
-                        divisions: watch.urls.length - 1,
-                        label: '${_page + 1}/${watch.urls.length}',
-                        onChanged: (v) => _jumpTo(v.toInt() - 1),
-                      ),
-              ),
-              Text(
-                '${_page + 1}/${watch.urls.length}',
-                style: const TextStyle(color: Colors.white),
-              ),
-              IconButton(
-                tooltip: '下一章',
-                icon: const Icon(Icons.skip_next, color: Colors.white),
-                onPressed: _index < widget.group.urls.length - 1
-                    ? () => _go(1)
-                    : null,
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: '上一章',
+                    icon: const Icon(Icons.skip_previous, color: Colors.white),
+                    onPressed: _index > 0 ? () => _go(-1) : null,
+                  ),
+                  Expanded(
+                    child: watch.urls.length < 2
+                        ? const SizedBox()
+                        : Slider(
+                            value: (_page + 1).toDouble().clamp(
+                              1,
+                              watch.urls.length.toDouble(),
+                            ),
+                            min: 1,
+                            max: watch.urls.length.toDouble(),
+                            divisions: watch.urls.length - 1,
+                            label: '${_page + 1}/${watch.urls.length}',
+                            onChanged: (v) => _jumpTo(v.toInt() - 1),
+                          ),
+                  ),
+                  Text(
+                    '${_page + 1}/${watch.urls.length}',
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  IconButton(
+                    tooltip: '下一章',
+                    icon: const Icon(Icons.skip_next, color: Colors.white),
+                    onPressed: _index < widget.group.urls.length - 1
+                        ? () => _go(1)
+                        : null,
+                  ),
+                ],
               ),
             ],
           ),

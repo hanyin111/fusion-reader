@@ -58,7 +58,7 @@ class _LibraryTransferPageState extends State<LibraryTransferPage> {
     final backup = LibraryBackup.capture();
     final path = await _files.save(backup);
     if (path == null) return null;
-    return '已导出 ${backup.favorites.length} 项收藏、${backup.history.length} 条历史。\n'
+    return '已导出 ${backup.favorites.length} 项收藏、${backup.history.length} 条历史，以及本系统的阅读设置。\n'
         '文件已保存到你选择的位置。';
   }
 
@@ -88,6 +88,8 @@ class _LibraryTransferPageState extends State<LibraryTransferPage> {
               ),
               Text('书架收藏：${backup.favorites.length} 项'),
               Text('浏览历史：${backup.history.length} 条（含阅读进度）'),
+              if (backup.currentReaderSettings.isNotEmpty)
+                const Text('阅读设置：将恢复本系统的字体、排版、背景和阅读模式'),
               const SizedBox(height: 12),
               const Text(
                 '合并到当前书架与历史，重复作品自动去重，'
@@ -133,7 +135,7 @@ class _LibraryTransferPageState extends State<LibraryTransferPage> {
         padding: const EdgeInsets.all(16),
         children: [
           const Text(
-            '把书架、浏览历史和阅读进度保存为 JSON 文件，'
+            '把书架、浏览历史、阅读进度和本系统的阅读设置保存为 JSON 文件，'
             '再在另一台设备导入，即可继续阅读。',
           ),
           const SizedBox(height: 16),
@@ -158,6 +160,7 @@ class _LibraryTransferPageState extends State<LibraryTransferPage> {
                       Text(
                         '${backup.favorites.length} 项书架收藏 · ${backup.history.length} 条浏览历史',
                       ),
+                      const Text('包含本系统的阅读设置，导入时只恢复同系统的设置。'),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _busy ? null : () => _run(_export),

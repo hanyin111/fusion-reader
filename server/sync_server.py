@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -85,6 +86,43 @@ def item(raw) -> dict:
             'update': text(raw.get('update'), optional=True)}
 
 
+READER_RANGES = {
+    'novel_fontSize': (12, 40), 'novel_lineHeight': (1, 2.6),
+    'novel_paragraphSpacing': (0, 40), 'novel_horizontalPadding': (0, 80),
+    'novel_verticalPadding': (0, 80), 'novel_letterSpacing': (0, 6),
+}
+READER_BOOLEANS = {'novel_indentFirstLine', 'novel_justify', 'novel_paged', 'mangaWebtoon'}
+
+
+def reader_settings(raw) -> dict:
+    if not isinstance(raw, dict):
+        raise ApiError(400, 'invalid_input')
+    result = {}
+    for platform, profile in raw.items():
+        if platform not in ('ios', 'android', 'windows', 'macos', 'linux', 'fuchsia') or not isinstance(profile, dict):
+            raise ApiError(400, 'invalid_input')
+        clean = {}
+        for key, value in profile.items():
+            if key in READER_RANGES:
+                low, high = READER_RANGES[key]
+                valid = type(value) in (int, float) and low <= value <= high and math.isfinite(value)
+            elif key in READER_BOOLEANS:
+                valid = type(value) is bool
+            elif key == 'novel_fontWeightIndex':
+                valid = type(value) is int and 0 <= value <= 2
+            elif key == 'novel_fontName':
+                valid = value in ('鸿蒙黑体', '系统默认', '衬线', '等宽')
+            elif key == 'novel_themeName':
+                valid = value in ('跟随应用', '纸白', '米黄', '杏仁', '护眼绿', '青灰', '暗灰', '纯黑')
+            else:
+                valid = False
+            if not valid:
+                raise ApiError(400, 'invalid_input')
+            clean[key] = value
+        result[platform] = clean
+    return result
+
+
 def validate_snapshot(raw) -> dict:
     if not isinstance(raw, dict) or raw.get('format') != 'FusionReader.library' or type(raw.get('schemaVersion')) is not int or raw['schemaVersion'] != 1:
         raise ApiError(400, 'invalid_input')
@@ -124,6 +162,8 @@ def validate_snapshot(raw) -> dict:
                'exportedAt': exported, 'favorites': favorites, 'history': clean_history,
                'excludedLocalFavorites': integer(raw.get('excludedLocalFavorites', 0)),
                'excludedLocalHistory': integer(raw.get('excludedLocalHistory', 0))}
+    if 'readerSettings' in raw:
+        cleaned['readerSettings'] = reader_settings(raw['readerSettings'])
     if len(json_bytes(cleaned)) > MAX_BYTES:
         raise ApiError(413, 'payload_too_large')
     return cleaned
@@ -326,7 +366,7 @@ class SyncApp:
         if environ.get('QUERY_STRING'):
             raise ApiError(400, 'invalid_input')
         if method == 'GET' and path == '/health':
-            return 200, {'ok': True, 'schemaVersion': 1}
+            return 200, {'ok': True, 'schemaVersion': 1, 'capabilities': ['readerSettings']}
         if method == 'POST' and path in ('/v1/auth/register', '/v1/auth/login'):
             return self._auth(environ, path.endswith('/register'))
         if (method, path) not in (('GET', '/v1/library'), ('PUT', '/v1/library'), ('POST', '/v1/auth/logout')):
@@ -349,6 +389,17 @@ class SyncApp:
                 # A reset/disable may have invalidated this session while a
                 # large upload was being parsed. Recheck under the write lock.
                 self._user(db, environ)
+                stored = db.execute('SELECT revision,snapshot FROM libraries WHERE user_id=?', (user['id'],)).fetchone()
+                if stored['revision'] != revision:
+                    raise ApiError(409, 'revision_conflict')
+                # Each OS owns its appearance. Old clients must not erase
+                # profiles they cannot understand, or resurrect removed books.
+                profiles = json.loads(stored['snapshot']).get('readerSettings', {})
+                profiles.update(snapshot.get('readerSettings', {}))
+                if profiles:
+                    snapshot['readerSettings'] = profiles
+                if len(json_bytes(snapshot)) > MAX_BYTES:
+                    raise ApiError(413, 'payload_too_large')
                 changed = db.execute('UPDATE libraries SET snapshot=?,revision=revision+1,updated_at=? '
                                      'WHERE user_id=? AND revision=?',
                                      (json_bytes(snapshot).decode(), int(time.time()), user['id'], revision))

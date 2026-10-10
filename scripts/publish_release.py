@@ -1,4 +1,4 @@
-"""Publish a complete stable release and retain previous releases as drafts."""
+"""Publish verified platforms, retaining desktop downloads for mobile releases."""
 import json
 import os
 import re
@@ -26,7 +26,7 @@ def releases(repository):
         page += 1
 
 
-def publish(repository, tag, version):
+def publish(repository, tag, version, *, include_linux=True):
     if tag != 'v' + version or not re.fullmatch(r'\d+\.\d+\.\d+', version):
         raise ValueError('Release tag must match the app version')
     # GitHub's tag endpoint can return 404 for drafts. The authenticated list
@@ -34,19 +34,19 @@ def publish(repository, tag, version):
     release = next((item for item in releases(repository) if item['tag_name'] == tag), None)
     if release is None:
         raise ValueError('Release draft was not found')
-    required = {f'FusionReader-{version}-windows-x64.zip',
-        *(f'FusionReader-{version}-android-{abi}.apk' for abi in ('arm64-v8a', 'armeabi-v7a', 'x86_64')),
-        'FusionReader-linux-x64.tar.gz', 'FusionReader-ios-unsigned.ipa'}
+    required = {*(f'FusionReader-{version}-android-{abi}.apk' for abi in ('arm64-v8a', 'armeabi-v7a', 'x86_64')),
+        'FusionReader-ios-unsigned.ipa'}
+    if include_linux:
+        required.add('FusionReader-linux-x64.tar.gz')
     present = {asset['name'] for asset in release['assets'] if asset['size'] > 100_000}
     if not required <= present:
         raise ValueError('Required release packages are missing: ' + ', '.join(sorted(required - present)))
-    with urlopen('https://hanyin111.github.io/fusion-reader-extensions/index.json', timeout=30) as response:
-        index = json.load(response)
-    if index.get('schemaVersion') != 1 or not index.get('extensions'):
-        raise ValueError('Published plugin repository is not ready')
     api(f'repos/{repository}/releases/{release["id"]}', 'PATCH',
         {'draft': False, 'prerelease': False, 'make_latest': 'true'})
     print('Published stable release ' + tag)
+    if not {f'FusionReader-{version}-windows-x64.zip', 'FusionReader-linux-x64.tar.gz'} <= present:
+        print('Previous desktop release remains available until desktop packages are added.')
+        return
     # Preserve every asset and tag; only remove older releases from public lists.
     for old in list(releases(repository)):
         if old['id'] != release['id'] and not old['draft']:
@@ -61,17 +61,17 @@ def verified_build(repository, run_id):
         raise ValueError('A completed version-tag build is required')
     jobs = api(f'repos/{repository}/actions/runs/{run_id}/jobs?per_page=100')['jobs']
     results = {job['name']: job['conclusion'] for job in jobs}
-    if any(results.get(name) != 'success' for name in ('android', 'linux', 'ios / ios')):
-        raise ValueError('Android, Linux and iOS must all pass before publication')
+    if any(results.get(name) != 'success' for name in ('android', 'ios / ios')) or results.get('linux') not in ('success', 'skipped'):
+        raise ValueError('Android and iOS must pass; Linux must pass or be intentionally skipped')
     commit = subprocess.check_output(['git', 'rev-parse', tag + '^{commit}'], text=True).strip()
     if commit != run['head_sha']:
         raise ValueError('Build commit and release tag differ')
     spec = subprocess.check_output(['git', 'show', tag + ':pubspec.yaml'], text=True)
     version = re.search(r'^version:\s*(\d+\.\d+\.\d+)', spec, re.M)[1]
-    return tag, version
+    return tag, version, results['linux'] == 'success'
 
 
 if __name__ == '__main__':
     repository = os.environ['GITHUB_REPOSITORY']
-    tag, version = verified_build(repository, os.environ['FUSION_BUILD_RUN_ID'])
-    publish(repository, tag, version)
+    tag, version, include_linux = verified_build(repository, os.environ['FUSION_BUILD_RUN_ID'])
+    publish(repository, tag, version, include_linux=include_linux)

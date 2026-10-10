@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart';
+import 'package:fusion_reader/models/reader_settings.dart';
 import 'package:fusion_reader/models/models.dart';
 import 'package:fusion_reader/services/library_backup.dart';
 import 'package:fusion_reader/services/account_service.dart';
@@ -39,7 +41,84 @@ void main() {
     await Storage.favoritesBox.clear();
     await Storage.clearHistory();
     await Storage.localBox.clear();
+    await Storage.settingsBox.clear();
   });
+  tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+  test(
+    'same OS restores complete reader appearance; other OS and old backups leave it alone',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      final settings = NovelReaderSettings.load()
+        ..fontName = '衬线'
+        ..themeName = '米黄'
+        ..fontSize = 26
+        ..lineHeight = 2.0
+        ..horizontalPadding = 36
+        ..verticalPadding = 24
+        ..letterSpacing = 2
+        ..paragraphSpacing = 28
+        ..fontWeightIndex = 2
+        ..paged = true
+        ..justify = true
+        ..indentFirstLine = false;
+      await settings.save();
+      await Storage.setSetting('mangaWebtoon', true);
+      await Storage.setSetting('account_password', 'private-setting');
+      final backup = LibraryBackup.decode(
+        LibraryBackup.capture().encodeBytes(),
+      );
+      expect(backup.readerSettings.keys, ['ios']);
+      expect(backup.encode(), isNot(contains('private-setting')));
+      await Storage.settingsBox.clear();
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      await backup.applySynchronized();
+      expect(NovelReaderSettings.load().fontSize, 18);
+      expect(Storage.setting('mangaWebtoon'), isNull);
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await backup.merge();
+      expect(NovelReaderSettings.load().fontName, '衬线');
+      expect(NovelReaderSettings.load().fontSize, 26);
+      expect(NovelReaderSettings.load().themeName, '米黄');
+      expect(NovelReaderSettings.load().paged, isTrue);
+      expect(NovelReaderSettings.load().indentFirstLine, isFalse);
+      expect(Storage.setting('mangaWebtoon'), isTrue);
+      final legacy = jsonDecode(backup.encode()) as Map<String, dynamic>;
+      legacy.remove('readerSettings');
+      await fromJson(legacy).applySynchronized();
+      expect(NovelReaderSettings.load().fontSize, 26);
+    },
+  );
+
+  test(
+    'invalid reader preferences are rejected before changing library or settings',
+    () async {
+      final original =
+          jsonDecode(LibraryBackup.capture().encode()) as Map<String, dynamic>;
+      for (final profile in [
+        {'novel_fontSize': 1000},
+        {'novel_paged': 'true'},
+        {'novel_fontWeightIndex': true},
+        {'novel_fontName': 'missing-font'},
+        {'account_token': 'secret'},
+      ]) {
+        final raw = {
+          ...original,
+          'readerSettings': {'ios': profile},
+        };
+        expect(() => fromJson(raw), throwsFormatException);
+      }
+      expect(
+        () => fromJson({
+          ...original,
+          'readerSettings': {'unknownOS': {}},
+        }),
+        throwsFormatException,
+      );
+      expect(Storage.favorites(), isEmpty);
+      expect(NovelReaderSettings.load().fontSize, 18);
+    },
+  );
   tearDownAll(() async {
     await Hive.close();
     PathProviderPlatform.instance = originalPaths;

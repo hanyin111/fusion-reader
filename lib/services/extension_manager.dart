@@ -10,8 +10,15 @@ import 'storage.dart';
 
 /// Owns installed plugins. Source scripts are distributed independently.
 class ExtensionManager extends ChangeNotifier {
-  ExtensionManager._();
+  ExtensionManager._({ExtensionRepository Function(String)? repositoryFactory})
+    : _repository =
+          repositoryFactory ?? ((url) => ExtensionRepository(url: url));
+  @visibleForTesting
+  factory ExtensionManager.forTesting({
+    required ExtensionRepository Function(String) repositoryFactory,
+  }) => ExtensionManager._(repositoryFactory: repositoryFactory);
   static final ExtensionManager instance = ExtensionManager._();
+  final ExtensionRepository Function(String) _repository;
 
   static const legacyPackages = [
     'mangadex',
@@ -33,17 +40,17 @@ class ExtensionManager extends ChangeNotifier {
   ExtensionCatalog? catalog;
   bool checkingRepository = false;
   String? repositoryError;
-  String appVersion = '1.4.0';
+  String appVersion = '1.4.1';
   final Set<String> _installing = {};
   final Set<String> _downloading = {};
   bool isInstalling(String package) =>
       _installing.contains(package) || _downloading.contains(package);
-  String get repositoryUrl =>
-      Storage.setting(
-            'extension_repository_url',
-            defaultValue: defaultExtensionRepository,
-          )
-          as String;
+  String get repositoryUrl {
+    final value = Storage.setting('extension_repository_url');
+    return value is String ? value.trim() : '';
+  }
+
+  bool get hasRepository => repositoryUrl.isNotEmpty;
   RepositoryExtension? repositoryEntry(String package) {
     for (final entry in catalog?.extensions ?? <RepositoryExtension>[]) {
       if (entry.package == package) return entry;
@@ -89,7 +96,7 @@ class ExtensionManager extends ChangeNotifier {
       appVersion = (await PackageInfo.fromPlatform()).version;
     } catch (_) {}
     final cached = Storage.setting('extension_repository_cache');
-    if (cached is Map && cached['url'] == repositoryUrl) {
+    if (hasRepository && cached is Map && cached['url'] == repositoryUrl) {
       try {
         catalog = ExtensionCatalog.parse(
           cached['index'],
@@ -184,16 +191,22 @@ class ExtensionManager extends ChangeNotifier {
   /// Install an extension by downloading a .js file from a URL
   /// (compatible with Miru extension repository raw links).
   Future<ExtensionMeta> installFromUrl(String url) async {
-    return installFromScript(await ExtensionRepository().downloadUrl(url));
+    return installFromScript(await _repository(url).downloadUrl(url));
   }
 
   Future<void> refreshRepository() async {
     if (checkingRepository) return;
+    if (!hasRepository) {
+      catalog = null;
+      repositoryError = null;
+      notifyListeners();
+      return;
+    }
     checkingRepository = true;
     repositoryError = null;
     notifyListeners();
     try {
-      final next = await ExtensionRepository(url: repositoryUrl).fetch();
+      final next = await _repository(repositoryUrl).fetch();
       await Storage.setSetting('extension_repository_cache', {
         'url': repositoryUrl,
         'index': next.json,
@@ -211,16 +224,27 @@ class ExtensionManager extends ChangeNotifier {
 
   Future<void> setRepository(String url) async {
     final normalized = repositoryUri(url).toString();
-    // Validate the new repository before replacing a working setting/cache.
-    final next = await ExtensionRepository(url: normalized).fetch();
-    await Storage.setSetting('extension_repository_url', normalized);
-    await Storage.setSetting('extension_repository_cache', {
-      'url': normalized,
-      'index': next.json,
-    });
-    catalog = next;
-    repositoryError = null;
+    if (checkingRepository ||
+        _installing.isNotEmpty ||
+        _downloading.isNotEmpty) {
+      throw StateError('插件仓库正在更新，请稍后重试。');
+    }
+    checkingRepository = true;
     notifyListeners();
+    try {
+      // Validate the new repository before replacing a working setting/cache.
+      final next = await _repository(normalized).fetch();
+      await Storage.setSetting('extension_repository_url', normalized);
+      await Storage.setSetting('extension_repository_cache', {
+        'url': normalized,
+        'index': next.json,
+      });
+      catalog = next;
+      repositoryError = null;
+    } finally {
+      checkingRepository = false;
+      notifyListeners();
+    }
   }
 
   Future<ExtensionMeta> installFromRepository(RepositoryExtension entry) async {
@@ -235,9 +259,7 @@ class ExtensionManager extends ChangeNotifier {
     _downloading.add(entry.package);
     notifyListeners();
     try {
-      final script = await ExtensionRepository(
-        url: repositoryUrl,
-      ).download(entry);
+      final script = await _repository(repositoryUrl).download(entry);
       return await _installScript(script);
     } finally {
       _downloading.remove(entry.package);
@@ -248,6 +270,7 @@ class ExtensionManager extends ChangeNotifier {
   Future<Map<String, String>> updateInstalled({
     bool restoreLegacy = false,
   }) async {
+    if (!hasRepository) throw const FormatException('请先填写插件仓库链接。');
     await refreshRepository();
     if (repositoryError != null) throw Exception(repositoryError);
     final failures = <String, String>{};

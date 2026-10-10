@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import '../models/models.dart';
+import 'reading_preferences.dart';
 import 'storage.dart';
 
 /// Versioned, portable metadata only. Device paths and source credentials are
@@ -16,6 +17,9 @@ class LibraryBackup {
   final List<HistoryRecord> history;
   final int excludedLocalFavorites;
   final int excludedLocalHistory;
+  final Map<String, Map<String, Object>> readerSettings;
+  Map<String, Object> get currentReaderSettings =>
+      readerSettings[ReadingPreferences.platform] ?? const {};
 
   LibraryBackup._({
     required this.exportedAt,
@@ -23,8 +27,10 @@ class LibraryBackup {
     required Iterable<HistoryRecord> history,
     this.excludedLocalFavorites = 0,
     this.excludedLocalHistory = 0,
+    Map<String, Map<String, Object>> readerSettings = const {},
   }) : favorites = List.unmodifiable(favorites),
-       history = List.unmodifiable(history);
+       history = List.unmodifiable(history),
+       readerSettings = ReadingPreferences.decode(readerSettings);
 
   factory LibraryBackup.capture() {
     final favorites = Storage.favorites();
@@ -39,8 +45,21 @@ class LibraryBackup {
       excludedLocalHistory: history
           .where((record) => _package(record.key) == 'local')
           .length,
+      readerSettings: {
+        ReadingPreferences.platform: ReadingPreferences.capture(),
+      },
     );
   }
+
+  LibraryBackup withReaderSettings(Map<String, Map<String, Object>> settings) =>
+      LibraryBackup._(
+        exportedAt: exportedAt,
+        favorites: favorites,
+        history: history,
+        excludedLocalFavorites: excludedLocalFavorites,
+        excludedLocalHistory: excludedLocalHistory,
+        readerSettings: settings,
+      );
 
   Set<String> get packages => {
     ...favorites.map((item) => item.package),
@@ -55,6 +74,7 @@ class LibraryBackup {
     'history': history.map((record) => record.toJson()).toList(),
     'excludedLocalFavorites': excludedLocalFavorites,
     'excludedLocalHistory': excludedLocalHistory,
+    if (readerSettings.isNotEmpty) 'readerSettings': readerSettings,
   });
 
   Uint8List encodeBytes() {
@@ -120,15 +140,21 @@ class LibraryBackup {
       }),
       excludedLocalFavorites: local.excludedLocalFavorites,
       excludedLocalHistory: local.excludedLocalHistory,
+      readerSettings: {...remote.readerSettings, ...local.readerSettings},
     );
   }
 
   /// Replace only portable records after a validated cloud download. Local
-  /// files and their progress remain device-specific. Roll back both boxes
+  /// files and their progress remain device-specific. Roll back affected boxes
   /// together if persistence fails, just as with manual imports.
   Future<void> applySynchronized() async {
     final favoriteBox = Storage.favoritesBox;
     final historyBox = Storage.historyBox;
+    final settingsBox = Storage.settingsBox;
+    final settingWrites = currentReaderSettings;
+    final oldSettings = {
+      for (final key in settingWrites.keys) key: settingsBox.get(key),
+    };
     final favoriteWrites = {
       for (final item in favorites.reversed) item.key: item.toJson(),
     };
@@ -158,9 +184,18 @@ class LibraryBackup {
       await historyBox.deleteAll(historyDeletes);
       await favoriteBox.putAll(favoriteWrites);
       await historyBox.putAll(historyWrites);
+      await settingsBox.putAll(settingWrites);
       await favoriteBox.flush();
       await historyBox.flush();
+      await settingsBox.flush();
     } catch (_) {
+      await settingsBox.deleteAll(
+        oldSettings.keys.where((key) => oldSettings[key] == null),
+      );
+      await settingsBox.putAll({
+        for (final e in oldSettings.entries)
+          if (e.value != null) e.key: e.value,
+      });
       await favoriteBox.deleteAll(
         oldFavorites.keys.where((key) => oldFavorites[key] == null),
       );
@@ -267,6 +302,7 @@ class LibraryBackup {
       }),
       excludedLocalFavorites: excludedFavorites,
       excludedLocalHistory: excludedHistory,
+      readerSettings: ReadingPreferences.decode(json['readerSettings']),
     );
   }
 
@@ -275,6 +311,11 @@ class LibraryBackup {
   Future<LibraryImportResult> merge() async {
     final favoritesBox = Storage.favoritesBox;
     final historyBox = Storage.historyBox;
+    final settingsBox = Storage.settingsBox;
+    final settingWrites = currentReaderSettings;
+    final oldSettings = {
+      for (final key in settingWrites.keys) key: settingsBox.get(key),
+    };
     final favoriteWrites = <String, dynamic>{};
     final historyWrites = <String, dynamic>{};
     var addedFavorites = 0;
@@ -317,7 +358,7 @@ class LibraryBackup {
       historyWrites[record.key] = record.toJson();
     }
 
-    // Hive has no transaction spanning two boxes. Keep the affected values so
+    // Hive has no transaction spanning these boxes. Keep the affected values so
     // a failed write can undo the merge without touching unrelated records.
     final oldFavorites = {
       for (final key in favoriteWrites.keys) key: favoritesBox.get(key),
@@ -328,9 +369,18 @@ class LibraryBackup {
     try {
       await favoritesBox.putAll(favoriteWrites);
       await historyBox.putAll(historyWrites);
+      await settingsBox.putAll(settingWrites);
       await favoritesBox.flush();
       await historyBox.flush();
+      await settingsBox.flush();
     } catch (_) {
+      await settingsBox.deleteAll(
+        oldSettings.keys.where((key) => oldSettings[key] == null),
+      );
+      await settingsBox.putAll({
+        for (final e in oldSettings.entries)
+          if (e.value != null) e.key: e.value,
+      });
       await favoritesBox.deleteAll(
         oldFavorites.keys.where((key) => oldFavorites[key] == null),
       );

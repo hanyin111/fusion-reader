@@ -41,6 +41,9 @@ void main() {
           ..value = snapshot(
             favorites: [novel],
             history: [progress(novel, 100).copyWith(textOffset: 731)],
+            readerSettings: {
+              'ios': {'novel_fontName': '衬线', 'novel_fontSize': 26},
+            },
           );
         one = AccountService(
           api: api,
@@ -88,6 +91,7 @@ void main() {
         );
         expect(await two.downloadToLocal(), isTrue, reason: two.error);
         expect(second.value.favorites.map((e) => e.key), [novel.key]);
+        expect(second.value.readerSettings['ios']!['novel_fontSize'], 26);
         expect(
           second.value.history.firstWhere((e) => e.key == novel.key).textOffset,
           731,
@@ -95,9 +99,17 @@ void main() {
         second.value = snapshot(
           favorites: [novel, comic],
           history: [...second.value.history, progress(comic, 200)],
+          readerSettings: {
+            'android': {'mangaWebtoon': true},
+          },
         );
         expect(await two.uploadToCloud(), isTrue, reason: two.error);
         expect(await one.downloadToLocal(), isTrue, reason: one.error);
+        expect(
+          first.value.readerSettings.keys,
+          containsAll(['ios', 'android']),
+        );
+        expect(first.value.readerSettings['ios']!['novel_fontName'], '衬线');
         expect(
           first.value.favorites.map((e) => e.key),
           containsAll([novel.key, comic.key]),

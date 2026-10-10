@@ -144,6 +144,7 @@ class Storage {
   static Future<void> clearHistory() => _history.clear();
 
   // ---- app settings ----
+  static Box get settingsBox => _settings;
   static dynamic setting(String key, {dynamic defaultValue}) =>
       _settings.get(key, defaultValue: defaultValue);
   static Future<void> setSetting(String key, dynamic value) =>

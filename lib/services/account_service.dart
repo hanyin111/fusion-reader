@@ -203,15 +203,23 @@ class AccountService extends ChangeNotifier {
     });
   }
 
-  Future<bool> uploadToCloud() => _sync(upload: true);
-  Future<bool> downloadToLocal() => _sync(upload: false);
+  Future<bool> uploadToCloud({bool includeReaderSettings = true}) =>
+      _sync(upload: true, includeReaderSettings: includeReaderSettings);
+  Future<bool> downloadToLocal({bool includeReaderSettings = true}) =>
+      _sync(upload: false, includeReaderSettings: includeReaderSettings);
 
-  String _contents(LibraryBackup snapshot) => jsonEncode({
-    'favorites': snapshot.favorites.map((e) => e.toJson()).toList(),
-    'history': snapshot.history.map((e) => e.toJson()).toList(),
-  });
+  String _contents(LibraryBackup snapshot, bool includeReaderSettings) =>
+      jsonEncode({
+        'favorites': snapshot.favorites.map((e) => e.toJson()).toList(),
+        'history': snapshot.history.map((e) => e.toJson()).toList(),
+        if (includeReaderSettings)
+          'readerSettings': snapshot.currentReaderSettings,
+      });
 
-  Future<bool> _sync({required bool upload}) async {
+  Future<bool> _sync({
+    required bool upload,
+    required bool includeReaderSettings,
+  }) async {
     await initialize();
     if (busy) return false;
     final current = session;
@@ -228,7 +236,14 @@ class AccountService extends ChangeNotifier {
       final before = library.capture();
       before.encodeBytes();
       final cloud = await api.download(current.token);
-      final accepted = upload ? before : cloud.snapshot;
+      final accepted = upload
+          ? before.withReaderSettings({
+              ...cloud.snapshot.readerSettings,
+              if (includeReaderSettings) ...before.readerSettings,
+            })
+          : includeReaderSettings
+          ? cloud.snapshot
+          : cloud.snapshot.withReaderSettings({});
       accepted.encodeBytes();
       if (upload) {
         try {
@@ -241,7 +256,8 @@ class AccountService extends ChangeNotifier {
         }
         // Uploading must never write back remote records or undo local edits.
       } else {
-        if (_contents(before) != _contents(library.capture())) {
+        if (_contents(before, includeReaderSettings) !=
+            _contents(library.capture(), includeReaderSettings)) {
           throw const AccountException('下载期间本机数据发生变化，请重新确认“云端同步本地”。');
         }
         await library.apply(accepted);

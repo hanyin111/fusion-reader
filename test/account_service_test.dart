@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/foundation.dart';
 import 'package:fusion_reader/models/models.dart';
 import 'package:fusion_reader/services/account_api.dart';
 import 'package:fusion_reader/services/account_service.dart';
@@ -12,6 +13,7 @@ import 'history_test.dart' show novel, comic, progress;
 LibraryBackup snapshot({
   List<MediaItem> favorites = const [],
   List<HistoryRecord> history = const [],
+  Map<String, Map<String, Object>> readerSettings = const {},
 }) => LibraryBackup.decode(
   utf8.encode(
     jsonEncode({
@@ -20,6 +22,7 @@ LibraryBackup snapshot({
       'exportedAt': '2026-10-09T00:00:00Z',
       'favorites': favorites.map((e) => e.toJson()).toList(),
       'history': history.map((e) => e.toJson()).toList(),
+      if (readerSettings.isNotEmpty) 'readerSettings': readerSettings,
     }),
   ),
 );
@@ -155,6 +158,42 @@ void main() {
   Future<void> login() async {
     expect(await service.authenticate('reader', 'password123'), isTrue);
   }
+
+  test(
+    'upload replaces books but retains other OS preferences; settings can be excluded',
+    () async {
+      library.value = snapshot(
+        favorites: [novel],
+        readerSettings: {
+          'ios': {'novel_fontSize': 26},
+        },
+      );
+      api.cloud = snapshot(
+        favorites: [comic],
+        readerSettings: {
+          'ios': {'novel_fontSize': 18},
+          'android': {'mangaWebtoon': true},
+        },
+      );
+      await login();
+      expect(await service.uploadToCloud(), isTrue);
+      expect(api.cloud.favorites.map((e) => e.key), [novel.key]);
+      expect(api.cloud.readerSettings['ios']!['novel_fontSize'], 26);
+      expect(api.cloud.readerSettings['android']!['mangaWebtoon'], isTrue);
+      library.value = snapshot(
+        readerSettings: {
+          'ios': {'novel_fontSize': 30},
+        },
+      );
+      expect(await service.uploadToCloud(includeReaderSettings: false), isTrue);
+      expect(api.cloud.readerSettings['ios']!['novel_fontSize'], 26);
+      expect(
+        await service.downloadToLocal(includeReaderSettings: false),
+        isTrue,
+      );
+      expect(library.value.readerSettings, isEmpty);
+    },
+  );
 
   test(
     'registration normalizes names and passes a one-time code, invalid input never calls API',
@@ -319,6 +358,36 @@ void main() {
     expect(library.value.history, isEmpty);
     expect(api.uploads, 0);
   });
+
+  test(
+    'download stops if reader appearance changes while waiting for the cloud',
+    () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      await login();
+      library.value = snapshot(
+        readerSettings: {
+          'ios': {'novel_fontSize': 18},
+        },
+      );
+      api.cloud = snapshot(
+        readerSettings: {
+          'ios': {'novel_fontSize': 24},
+        },
+      );
+      api.duringDownload = () async {
+        library.value = snapshot(
+          readerSettings: {
+            'ios': {'novel_fontSize': 30},
+          },
+        );
+      };
+      expect(await service.downloadToLocal(), isFalse);
+      expect(library.applies, 0);
+      expect(library.value.readerSettings['ios']!['novel_fontSize'], 30);
+      expect(service.error, contains('本机数据发生变化'));
+    },
+  );
 
   test(
     'failed download or concurrent local edits cannot erase local data',

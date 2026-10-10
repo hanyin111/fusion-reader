@@ -112,6 +112,30 @@ class SyncTests(unittest.TestCase):
         self.assertEqual(sorted(statuses), [200, 409])
         self.assertEqual(request(self.app, 'GET', '/v1/library', token=token)[1]['revision'], 1)
 
+    def test_reader_profiles_preserve_other_platforms_and_legacy_uploads(self):
+        token = self.register()['token']
+        first = empty_snapshot()
+        first['readerSettings'] = {'ios': {'novel_fontName': '衬线', 'novel_fontSize': 26, 'novel_paged': True}}
+        self.assertEqual(request(self.app, 'PUT', '/v1/library', {'expectedRevision': 0, 'snapshot': first}, token)[0], 200)
+        second = empty_snapshot()
+        second['readerSettings'] = {'android': {'mangaWebtoon': True}}
+        self.assertEqual(request(self.app, 'PUT', '/v1/library', {'expectedRevision': 1, 'snapshot': second}, token)[0], 200)
+        self.assertEqual(request(self.app, 'PUT', '/v1/library', {'expectedRevision': 2, 'snapshot': empty_snapshot()}, token)[0], 200)
+        saved = request(self.app, 'GET', '/v1/library', token=token)[1]['snapshot']
+        self.assertEqual(saved['readerSettings']['ios'], first['readerSettings']['ios'])
+        self.assertEqual(saved['readerSettings']['android'], second['readerSettings']['android'])
+        self.assertEqual(saved['favorites'], [])
+
+    def test_invalid_reader_profiles_do_not_mutate_data(self):
+        token = self.register()['token']
+        for profiles in [{'invalid': {}}, {'ios': {'novel_fontSize': 1000}},
+                         {'ios': {'novel_paged': 'true'}}, {'ios': {'account_token': 'secret'}},
+                         {'ios': {'novel_fontName': ['衬线']}}, {'ios': {'novel_fontWeightIndex': True}}]:
+            snapshot = empty_snapshot()
+            snapshot['readerSettings'] = profiles
+            self.assertEqual(request(self.app, 'PUT', '/v1/library', {'expectedRevision': 0, 'snapshot': snapshot}, token)[0], 400)
+        self.assertEqual(request(self.app, 'GET', '/v1/library', token=token)[1]['revision'], 0)
+
     def test_invalid_payload_does_not_mutate_accepted_data(self):
         token = self.register()['token']
         bad = empty_snapshot(); bad['schemaVersion'] = True

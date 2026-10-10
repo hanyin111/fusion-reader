@@ -215,7 +215,7 @@ class ExtensionsPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '插件已与应用分开发布。安装与更新请打开插件仓库；⚠ 表示插件加载失败。',
+                        '插件独立发布，填写仓库链接后可安装和更新；⚠ 表示插件加载失败。',
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       TextButton.icon(

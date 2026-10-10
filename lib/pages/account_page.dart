@@ -19,6 +19,7 @@ class _AccountPageState extends State<AccountPage> {
   final _code = TextEditingController();
   bool _register = false;
   bool _showPassword = false;
+  bool _includeReaderSettings = true;
 
   @override
   void initState() {
@@ -56,9 +57,12 @@ class _AccountPageState extends State<AccountPage> {
       builder: (context) => AlertDialog(
         title: Text(upload ? '本地同步云端' : '云端同步本地'),
         content: Text(
-          upload
-              ? '用本机的书架、历史和阅读进度覆盖云端。云端独有的记录会被移除；本机数据不变。确定上传吗？'
-              : '用云端的书架、历史和阅读进度覆盖本机。本机独有的网络作品记录会被移除；云端数据不变。确定下载吗？',
+          (upload
+                  ? '用本机的书架、历史和阅读进度覆盖云端。云端独有的记录会被移除；本机数据不变。确定上传吗？'
+                  : '用云端的书架、历史和阅读进度覆盖本机。本机独有的网络作品记录会被移除；云端数据不变。确定下载吗？') +
+              (_includeReaderSettings
+                  ? '\n\n同时${upload ? '上传本机' : '恢复同系统的'}阅读设置，包括字体、排版、背景和阅读模式。'
+                  : '\n\n这次不更改阅读设置。'),
         ),
         actions: [
           TextButton(
@@ -74,8 +78,12 @@ class _AccountPageState extends State<AccountPage> {
     );
     if (accepted != true || !mounted) return;
     final success = upload
-        ? await _account.uploadToCloud()
-        : await _account.downloadToLocal();
+        ? await _account.uploadToCloud(
+            includeReaderSettings: _includeReaderSettings,
+          )
+        : await _account.downloadToLocal(
+            includeReaderSettings: _includeReaderSettings,
+          );
     if (success && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(upload ? '本机数据已上传，云端已替换' : '云端数据已下载，本机已替换')),
@@ -232,6 +240,16 @@ class _AccountPageState extends State<AccountPage> {
                         : '上次同步：${_date(_account.lastSync!)}',
                   ),
                   const SizedBox(height: 16),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('同步此系统的阅读设置'),
+                    subtitle: const Text('同系统换机恢复字体、排版、背景和阅读模式；其他系统保留各自设置'),
+                    value: _includeReaderSettings,
+                    onChanged: enabled
+                        ? (value) =>
+                              setState(() => _includeReaderSettings = value)
+                        : null,
+                  ),
                   FilledButton.icon(
                     onPressed: enabled ? () => _sync(upload: true) : null,
                     icon: const Icon(Icons.cloud_upload_outlined),
@@ -245,7 +263,7 @@ class _AccountPageState extends State<AccountPage> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    '两个按钮都按所选方向覆盖数据，不会自动合并。删书后用“本地同步云端”上传，再在其他设备用“云端同步本地”下载。\n\n建议覆盖前先用 JSON 导出备份。本地文件、离线缓存、插件账号和阅读设置不参与同步。',
+                    '两个按钮都按所选方向覆盖数据，不会自动合并。删书后用“本地同步云端”上传，再在其他设备用“云端同步本地”下载。\n\n建议覆盖前先用 JSON 导出备份。本地文件、离线缓存和插件账号不参与同步。',
                   ),
                   const SizedBox(height: 24),
                   OutlinedButton(

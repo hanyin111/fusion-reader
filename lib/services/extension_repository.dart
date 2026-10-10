@@ -8,9 +8,6 @@ import 'package:dio/io.dart';
 
 import '../models/models.dart';
 
-const defaultExtensionRepository =
-    'https://hanyin111.github.io/fusion-reader-extensions/index.json';
-
 int compareExtensionVersions(String first, String second) {
   List<int> parts(String value) =>
       value.replaceFirst(RegExp(r'^v'), '').split('.').map(int.parse).toList();
@@ -162,7 +159,7 @@ class ExtensionRepository {
   final Dio client;
   final bool _configureClient;
   Future<void>? _configuration;
-  ExtensionRepository({String url = defaultExtensionRepository, Dio? client})
+  ExtensionRepository({required String url, Dio? client})
     : index = repositoryUri(url),
       _configureClient = client == null,
       client = client ?? _client();

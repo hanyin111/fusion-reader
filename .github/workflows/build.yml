@@ -9,7 +9,7 @@ on:
       platform:
         description: 'Platforms to build'
         type: choice
-        options: [all, android]
+        options: [all, mobile, android]
         default: all
   push:
     branches: [main]
@@ -68,7 +68,7 @@ jobs:
       - name: Test stable release and archival checks
         run: python3 -m unittest discover -s test -p publish_release_test.py
       - name: Test library, readers and source image decoding
-        run: flutter test --no-pub test/extension_repository_test.dart test/library_backup_test.dart test/history_test.dart test/novel_pagination_test.dart test/novel_reader_paging_test.dart test/offline_catalog_test.dart test/extension_crypto_test.dart test/source_image_codec_test.dart test/account_service_test.dart test/account_api_test.dart test/account_page_test.dart
+        run: flutter test --no-pub test/extension_repository_test.dart test/extension_repository_settings_test.dart test/library_backup_test.dart test/history_test.dart test/manga_zoom_test.dart test/manga_reader_zoom_test.dart test/novel_pagination_test.dart test/novel_reader_paging_test.dart test/offline_catalog_test.dart test/extension_crypto_test.dart test/source_image_codec_test.dart test/account_service_test.dart test/account_api_test.dart test/account_page_test.dart
       - run: flutter build apk --release --split-per-abi --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
       - name: Verify final APK signatures and versions
         run: |
@@ -97,7 +97,7 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
 
   linux:
-    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

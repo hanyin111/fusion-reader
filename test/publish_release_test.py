@@ -1,7 +1,5 @@
 """Publication must not expose incomplete builds or delete historical files."""
 import importlib.util
-import io
-import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -29,8 +27,7 @@ class PublishReleaseTests(unittest.TestCase):
     def test_stable_publish_precedes_archival_and_retains_assets(self):
         older = {'id': 1, 'tag_name': 'v1.3.2', 'draft': False, 'assets': [{'name': 'old.apk'}]}
         already_hidden = {'id': 2, 'tag_name': 'v1.3.8', 'draft': True}
-        feed = io.BytesIO(json.dumps({'schemaVersion': 1, 'extensions': [{'package': 'fixture'}]}).encode())
-        with patch.object(publisher, 'api', side_effect=[[self.release], {}, [self.release, older, already_hidden], {}]) as api, patch.object(publisher, 'urlopen', return_value=feed):
+        with patch.object(publisher, 'api', side_effect=[[self.release], {}, [self.release, older, already_hidden], {}]) as api:
             publisher.publish('owner/app', 'v1.4.0', '1.4.0')
         mutations = [call for call in api.call_args_list if len(call.args) > 1]
         self.assertEqual(mutations[0].args[0], 'repos/owner/app/releases/3')
@@ -39,21 +36,36 @@ class PublishReleaseTests(unittest.TestCase):
         self.assertEqual(older['assets'], [{'name': 'old.apk'}])
         self.assertEqual(len(mutations), 2)
 
-    def test_wrong_tag_or_unavailable_plugin_feed_never_changes_releases(self):
+    def test_wrong_tag_never_changes_releases(self):
         with patch.object(publisher, 'api') as api:
             with self.assertRaises(ValueError):
                 publisher.publish('owner/app', 'v1.3.8', '1.4.0')
             api.assert_not_called()
-        with patch.object(publisher, 'api', return_value=[self.release]) as api, patch.object(publisher, 'urlopen', return_value=io.BytesIO(b'{"schemaVersion":1,"extensions":[]}')):
+
+    def test_mobile_release_does_not_require_desktop_or_plugin_feed_or_hide_previous_desktop_release(self):
+        assets = [a for a in self.assets if a['name'].endswith(('.apk', '.ipa'))]
+        release = dict(self.release, assets=assets)
+        with patch.object(publisher, 'api', side_effect=[[release], {}]) as api:
+            publisher.publish('owner/app', 'v1.4.0', '1.4.0', include_linux=False)
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual(api.call_args.args[2]['draft'], False)
+        with patch.object(publisher, 'api', return_value=[dict(release, assets=assets[:-1])]) as api:
             with self.assertRaises(ValueError):
-                publisher.publish('owner/app', 'v1.4.0', '1.4.0')
+                publisher.publish('owner/app', 'v1.4.0', '1.4.0', include_linux=False)
             self.assertEqual(api.call_count, 1)
 
     def test_only_completed_tag_builds_with_every_platform_passed_are_accepted(self):
         run = {'status': 'completed', 'head_branch': 'v1.4.0', 'head_sha': 'abc'}
         jobs = {'jobs': [{'name': n, 'conclusion': 'success'} for n in ('android', 'linux', 'ios / ios')]}
         with patch.object(publisher, 'api', side_effect=[run, jobs]), patch.object(publisher.subprocess, 'check_output', side_effect=['abc\n', 'version: 1.4.0+13\n']):
-            self.assertEqual(publisher.verified_build('owner/app', 1), ('v1.4.0', '1.4.0'))
+            self.assertEqual(publisher.verified_build('owner/app', 1), ('v1.4.0', '1.4.0', True))
+        jobs['jobs'][1]['conclusion'] = 'skipped'
+        with patch.object(publisher, 'api', side_effect=[run, jobs]), patch.object(publisher.subprocess, 'check_output', side_effect=['abc\n', 'version: 1.4.0+13\n']):
+            self.assertEqual(publisher.verified_build('owner/app', 1), ('v1.4.0', '1.4.0', False))
+        jobs['jobs'][1]['conclusion'] = 'failure'
+        with patch.object(publisher, 'api', side_effect=[run, jobs]), self.assertRaises(ValueError):
+            publisher.verified_build('owner/app', 1)
+        jobs['jobs'][1]['conclusion'] = 'success'
         jobs['jobs'][2]['conclusion'] = 'failure'
         with patch.object(publisher, 'api', side_effect=[run, jobs]), self.assertRaises(ValueError):
             publisher.verified_build('owner/app', 1)
