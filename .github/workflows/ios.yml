@@ -67,6 +67,11 @@ jobs:
           xcrun simctl bootstatus "$DEVICE_ID" -b
       - name: Test danmaku parsing and playback timeline
         run: flutter test --no-pub test/cache_download_queue_test.dart test/manga_zoom_test.dart test/app_update_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
+      - name: Test video danmaku on iOS simulator
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          flutter test integration_test/video_danmaku_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-video-danmaku-test.log
       - name: Test extension runtime on iOS simulator
         timeout-minutes: 25
         run: |
@@ -92,11 +97,6 @@ jobs:
         run: |
           set -o pipefail
           flutter test integration_test/account_storage_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-account-storage-test.log
-      - name: Test video danmaku on iOS simulator
-        timeout-minutes: 10
-        run: |
-          set -o pipefail
-          flutter test integration_test/video_danmaku_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-video-danmaku-test.log
       - name: Capture simulator diagnostics
         if: failure()
         timeout-minutes: 2
