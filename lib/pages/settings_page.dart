@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/offline_cache.dart';
 import '../services/account_service.dart';
 import 'account_page.dart';
+import 'app_update_page.dart';
 import 'library_transfer_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -144,6 +145,18 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 24),
           Text('关于', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.system_update_alt),
+              title: const Text('检查更新'),
+              subtitle: const Text('查看新版本并下载更新'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const AppUpdatePage())),
+            ),
+          ),
           const SizedBox(height: 8),
           Card(
             child: Padding(

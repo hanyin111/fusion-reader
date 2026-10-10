@@ -32,6 +32,7 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.4
+  path: ^1.9.1
   package_info_plus: ^9.0.1
   flutter_secure_storage: ^9.2.4
 
@@ -70,6 +71,7 @@ flutter:
 
   assets:
     - assets/js/
+    - assets/update_windows.ps1
     - assets/licenses/
     - assets/fonts/OFL-NotoSerifCJK.txt
 

@@ -68,7 +68,7 @@ jobs:
       - name: Test stable release and archival checks
         run: python3 -m unittest discover -s test -p publish_release_test.py
       - name: Test library, readers and source image decoding
-        run: flutter test --no-pub test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart test/extension_repository_test.dart test/extension_repository_settings_test.dart test/library_backup_test.dart test/history_test.dart test/manga_zoom_test.dart test/manga_reader_zoom_test.dart test/novel_pagination_test.dart test/novel_reader_paging_test.dart test/offline_catalog_test.dart test/extension_crypto_test.dart test/source_image_codec_test.dart test/account_service_test.dart test/account_api_test.dart test/account_page_test.dart
+        run: flutter test --no-pub test/app_update_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart test/extension_repository_test.dart test/extension_repository_settings_test.dart test/library_backup_test.dart test/history_test.dart test/manga_zoom_test.dart test/manga_reader_zoom_test.dart test/novel_pagination_test.dart test/novel_reader_paging_test.dart test/offline_catalog_test.dart test/extension_crypto_test.dart test/source_image_codec_test.dart test/account_service_test.dart test/account_api_test.dart test/account_page_test.dart
       - run: flutter build apk --release --split-per-abi --dart-define="FUSION_SYNC_URL=$FUSION_SYNC_URL"
       - name: Verify final APK signatures and versions
         run: |

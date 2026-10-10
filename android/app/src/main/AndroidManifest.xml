@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- Keeps the screen awake during video playback (media_kit/wakelock_plus). -->
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- User-confirmed in-app APK upgrades for the GitHub distribution. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- Reading locally imported books and comics. Android 13+ replaced the
          blanket storage permission with per-media-type ones. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
@@ -46,6 +48,15 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
