@@ -34,10 +34,12 @@ migrate_working_dir/
 /coverage/
 /backups/
 /extensions-project/
-/server/data/
-/admin/.venv/
-/admin/*.csv
-/admin/known_hosts
+/server/
+/admin/
+/docs/account-sync.md
+/scripts/build_admin.ps1
+/test/account_backend_test.dart
+/.github/workflows/sync-tests.yml
 __pycache__/
 
 # Symbolication related

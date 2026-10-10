@@ -15,7 +15,7 @@
 | Android | `FusionReader-版本-android-arm64-v8a.apk` 等 | 常见手机选 arm64-v8a；更新时选择与已安装版本相同的架构 |
 | Windows | `FusionReader-版本-windows-x64.zip` | 完整解压后运行 `fusion_reader.exe`，保留同目录的文件 |
 | iOS | `FusionReader-ios-unsigned.ipa` | 未签名 IPA，需要自行签名后安装 |
-| Linux | `FusionReader-linux-x64.tar.gz` | 解压运行；系统需要 GTK、mpv 和 libsecret，账号凭据存储需要系统 keyring |
+| Linux | `FusionReader-linux-x64.tar.gz` | 解压运行；系统需要 GTK、mpv 和 libsecret |
 
 macOS 构建暂不发布，修复后再补。历史安装包保留为发布草稿，不占用正式版下载列表。
 
@@ -55,19 +55,15 @@ https://hanyin111.github.io/fusion-reader-extensions/index.json
 
 在「设置 → 数据迁移 → 导入与导出」导出 JSON，再在另一台设备导入。导入按来源和作品去重，合并书架、浏览历史及漫画页码、小说位置、视频进度，保留较新的记录。文件包含本系统的阅读设置，同系统换机可恢复字体、排版、背景与阅读模式；其他系统的设置保持原样。文件不包含本地书籍、离线缓存、插件脚本或登录凭据；另一台设备需要安装对应插件。
 
-账号采用一次性激活码注册。在「设置 → 账号与同步」选择 **本地同步云端**（覆盖云端）或 **云端同步本地**（覆盖本机），同步前会提示。删书后先上传，再在其他设备下载。阅读设置可选同步，按系统分别保存，同系统恢复，其他系统的设置继续保留。本地文件和插件账号不上传，退出登录保留本机数据。自建版本需配置同步服务，见 [账号同步说明](docs/account-sync.md)；服务端与独立管理工具分别见 [server](server/README.md) 和 [admin](admin/README.md)。
-
 ## 项目结构
 
 ```text
 fusion-reader/                  应用本体
   lib/pages/                    界面与阅读器
-  lib/services/                 书架、插件安装、脚本运行时、网络、账号
+  lib/services/                 书架、插件安装、脚本运行时、网络与缓存
   assets/js/runtime.js          插件公共桥接接口
   assets/fonts/                 随包字体
   integration_test/             原生运行时和功能回归
-  server/                       可选的 SQLite 同步服务
-  admin/                        独立账号管理工具
 
 fusion-reader-extensions/       单独的 GitHub 项目
   sources/                      站点插件脚本
@@ -96,6 +92,6 @@ Windows 需要 Visual Studio C++、ATL 和 NuGet；Linux 需要 GTK、mpv、libs
 
 GitHub Actions 构建 Android、iOS、Linux，手动运行时可选择 `mobile` 仅构建 Android 和 iOS。Android 发布前检查固定签名、包名、版本及 ABI；iOS 先运行模拟器回归，再生成 IPA。Windows 可本地构建上传，也可使用独立的 Windows 工作流。发布流程确认选定平台的安装包齐全后才公开新版本；只发布手机版时保留上一版桌面端下载，全部平台齐备后再将旧发布改为草稿。应用发布不依赖某个插件仓库在线。macOS 的独立手动工作流保留，暂不参与正式发布。
 
-账号服务地址通过 `FUSION_SYNC_URL` 构建参数注入，Actions 使用同名 Secret。Android 签名使用 `ANDROID_DEBUG_KEYSTORE_B64`，证书指纹保存在 `android/signing-certificate.sha256`；私钥和服务器凭据不提交。未配置同步地址的版本仍可阅读及使用 JSON 迁移。
+Android 签名使用 `ANDROID_DEBUG_KEYSTORE_B64`，证书指纹保存在 `android/signing-certificate.sha256`；签名私钥不提交。
 
 修改前可运行 `scripts/backup.ps1` 创建本地备份。验证新备份完整后才删除旧备份，只保留最近一份。
