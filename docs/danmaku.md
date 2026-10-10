@@ -26,11 +26,23 @@ DPlayer 格式为 `{ "code": 0, "data": [[秒数, 类型, RGB整数, 用户, 文
 
 渲染和时间同步思路参考 [DanDanPlayForAndroid](https://github.com/xyoye/DanDanPlayForAndroid/tree/master/player_component/src/main/java/com/xyoye/player/controller/danmu)，本实现为独立编写的 Dart 代码，没有引入其 Android 播放器或复制其源码。DPlayer 数据约定参考其[官方后端适配](https://github.com/DIYgod/DPlayer/blob/master/src/js/api.js)。
 
-## 验证与待办
+## 按播放进度加载
+
+插件也可返回 `danmaku: {format: 'extension', url: '作品:集数', windowSeconds: 180}`，并实现 `async danmaku(url, fromSeconds, toSeconds)`，返回上述 DPlayer 数组。`url` 是传给插件的标识；时间范围单位为秒。播放器预取接下来约 3 分钟的数据，按视频进度继续加载，拖动进度条时读取对应范围；重叠数据去重，最多缓存 12 个窗口，切换章节和导入本地文件会清除旧请求的结果。网络失败不会影响视频，自动重试间隔至少 30 秒。
+
+脚本可使用 `await this.grpcRequest({endpoint, method, data, metadata, certificate})` 调用 TLS gRPC 的一元接口。`data` 和返回值为 protobuf 字节的 Base64；具体服务名和消息编码由插件实现，本体不内置站点地址。每次请求限时 10 秒，响应上限 8 MB。默认使用系统证书验证；若插件提供 PEM 证书，则证书错误只能通过该证书的精确 SHA-256 校验，其他证书仍会被拒绝。
+
+## Omofun 接入与验证
+
+2026-10-10 对用户提供的官方桌面 App 2.0.1 做只读分析，并实测其公开的分类、搜索、作品详情、播放地址、弹幕读取接口。读取这些接口无需账号令牌或请求签名；没有使用登录数据，也没有提取或分发共享签名密钥。网站打不开时 App 仍可用，符合其独立接口的实际测试结果；网页 TLS 失败的具体原因仍无法确认。
+
+独立插件 Omofun v1.1.0 使用 App 接口，需应用 1.4.2 或更新版本提供 gRPC 桥接。旧书架可按完整标题唯一匹配作品；有同名歧义时提示重新搜索，避免错误绑定。播放线路若需要官方 App 专用加速组件，会明确提示切换其他线路。
+
+Windows 真实运行时验证了分类、两页列表、搜索、目录、天堂线路的原生视频读取，以及同一集两个时间范围的弹幕。普通 CI 使用本地模拟服务，不自动访问第三方站点；安卓与 iOS 仍需原生构建和设备测试。
 
 ```sh
-flutter test test/danmaku_test.dart
+flutter test test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
 flutter test integration_test/video_danmaku_test.dart -d windows
+# 实际接口检查仅在明确传入本地插件脚本时运行：
+flutter test integration_test/omofun_app_test.dart -d windows --dart-define=OMOFUN_SCRIPT=/absolute/path/omofun.js
 ```
-
-Omofun 的实际弹幕接口还未接入。2026-10-10 调查时，电脑网络在 HTTPS 握手阶段被断开，手机流量可以打开网站；尚不能确认是否为出口 IP 风控。不要猜测接口或增加循环重试。网络恢复后，只需读取播放页加载的播放器脚本，核实按作品和集数绑定的弹幕接口、返回格式、时间单位及请求头，再更新独立插件并进行真实播放验证。

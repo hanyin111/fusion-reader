@@ -25,32 +25,41 @@ class DanmakuSource {
   final String format;
   final Map<String, String> headers;
   final String? netMode;
+  final int windowSeconds;
 
   const DanmakuSource({
     required this.url,
     this.format = 'dplayer',
     this.headers = const {},
     this.netMode,
+    this.windowSeconds = 180,
   });
 
   static DanmakuSource? fromJson(dynamic raw) {
     if (raw is! Map) return null;
     final url = (raw['url'] ?? '').toString();
+    final format = (raw['format'] ?? 'dplayer').toString();
     final uri = Uri.tryParse(url);
-    if (uri == null ||
+    if (format == 'extension') {
+      if (url.isEmpty || url.length > 2048) return null;
+    } else if (uri == null ||
         !['https', 'http'].contains(uri.scheme) ||
         uri.host.isEmpty) {
       return null;
     }
     return DanmakuSource(
       url: url,
-      format: (raw['format'] ?? 'dplayer').toString(),
+      format: format,
       headers: raw['headers'] is Map
           ? (raw['headers'] as Map).map(
               (key, value) => MapEntry(key.toString(), value.toString()),
             )
           : const {},
       netMode: raw['netMode']?.toString(),
+      windowSeconds: (int.tryParse('${raw['windowSeconds']}') ?? 180).clamp(
+        30,
+        600,
+      ),
     );
   }
 }

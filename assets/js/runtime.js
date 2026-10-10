@@ -234,6 +234,10 @@ class Extension {
     return __bridgeCall('base64Encode', { text });
   }
 
+  async grpcRequest(options) {
+    return __bridgeCall('grpcRequest', options);
+  }
+
   // UTF-8 key, Base64 ciphertext, AES-ECB with PKCS7 padding.
   async aesEcbDecrypt(ciphertext, key) {
     return __bridgeCall('aesEcbDecrypt', { ciphertext, key });

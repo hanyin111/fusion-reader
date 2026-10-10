@@ -6,6 +6,16 @@ import 'offline_cache.dart';
 /// Resolves content for a shelf item, whether it came from a web extension or
 /// from the device. Readers call through here so they never branch on origin.
 class Sources {
+  static Future<List<DanmakuComment>> danmaku(
+    MediaItem item,
+    String url,
+    double from,
+    double to,
+  ) async {
+    final service = await ExtensionManager.instance.ensureLoaded(item.package);
+    return service.danmaku(url, from, to);
+  }
+
   static CommentScope? commentScope(MediaItem item) {
     if (LocalLibrary.isLocal(item.package)) return null;
     return ExtensionManager.instance.byPackage(item.package)?.meta.commentScope;
@@ -17,7 +27,7 @@ class Sources {
       final service = await ExtensionManager.instance.ensureLoaded(
         item.package,
       );
-      final detail = await service.detail(item.url);
+      final detail = await service.detail(item.url, title: item.title);
       // Refresh catalogs for works downloaded with this or an older version.
       await OfflineCache.saveDetail(item, detail);
       return detail;
@@ -33,7 +43,7 @@ class Sources {
       return LocalLibrary.watch(item, episodeUrl);
     }
     final service = await ExtensionManager.instance.ensureLoaded(item.package);
-    return service.watch(episodeUrl);
+    return service.watch(episodeUrl, title: item.title);
   }
 
   /// Same as [watch] but serves a downloaded copy when one exists, so cached

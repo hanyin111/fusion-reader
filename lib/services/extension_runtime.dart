@@ -14,6 +14,7 @@ import 'apple_js_runtime.dart';
 import 'browser_loader.dart';
 import 'extension_result.dart';
 import 'extension_crypto.dart';
+import 'extension_grpc.dart';
 import 'network.dart';
 import 'storage.dart';
 
@@ -72,6 +73,7 @@ class ExtensionService {
     });
 
     _channel(rt, 'request', _handleRequest);
+    _channel(rt, 'grpcRequest', (payload) => ExtensionGrpc.request(payload as Map));
     _channel(rt, 'querySelector', _handleQuerySelector);
     _channel(rt, 'querySelectorAll', _handleQuerySelectorAll);
     _channel(rt, 'getAttributeText', _handleGetAttributeText);
@@ -156,8 +158,8 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     return _toItems(res);
   }
 
-  Future<MediaDetail> detail(String url) async {
-    final res = await _call('detail', [url]);
+  Future<MediaDetail> detail(String url, {String? title}) async {
+    final res = await _call('detail', [url, {'title': title}]);
     if (res is! Map) throw ExtensionException(meta.package, 'detail() returned ${res.runtimeType}');
     return MediaDetail.fromJson(res);
   }
@@ -176,10 +178,15 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
   }
 
   /// Raw watch result — callers pick the typed wrapper based on [meta.type].
-  Future<Map> watch(String url) async {
-    final res = await _call('watch', [url]);
+  Future<Map> watch(String url, {String? title}) async {
+    final res = await _call('watch', [url, {'title': title}]);
     if (res is! Map) throw ExtensionException(meta.package, 'watch() returned ${res.runtimeType}');
     return res;
+  }
+
+  Future<List<DanmakuComment>> danmaku(String url, double from, double to) async {
+    final res = await _call('danmaku', [url, from, to]);
+    return parseDanmaku(res, 'dplayer');
   }
 
   List<MediaItem> _toItems(dynamic res) {

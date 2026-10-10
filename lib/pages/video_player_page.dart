@@ -9,6 +9,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../models/models.dart';
 import '../services/danmaku_service.dart';
+import '../services/danmaku_session.dart';
 import '../services/player_config.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
@@ -41,6 +42,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   int _generation = 0;
   CancelToken? _danmakuRequest;
   DanmakuSource? _danmakuSource;
+  DanmakuSession? _danmakuSession;
+  StreamSubscription<Duration>? _danmakuPosition;
   late final ValueNotifier<DanmakuDisplay> _danmaku = ValueNotifier(
     DanmakuDisplay(
       enabled: Storage.setting('danmakuEnabled', defaultValue: true) == true,
@@ -65,6 +68,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void initState() {
     super.initState();
+    _danmakuPosition = _player.stream.position.listen((position) {
+      if (_danmaku.value.enabled) {
+        unawaited(_danmakuSession?.update(position.inMilliseconds / 1000));
+      }
+    });
     _load();
   }
 
@@ -72,6 +80,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   void dispose() {
     _generation++;
     _danmakuRequest?.cancel();
+    _danmakuSession?.dispose();
+    _danmakuPosition?.cancel();
     _danmaku.dispose();
     _player.dispose();
     super.dispose();
@@ -82,6 +92,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     final index = _index;
     final episode = widget.group.urls[index];
     _danmakuRequest?.cancel();
+    _danmakuSession?.dispose();
+    _danmakuSession = null;
     _danmakuSource = null;
     _setComments(message: '此视频暂无在线弹幕，可加载弹幕文件');
     setState(() {
@@ -146,7 +158,30 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   Future<void> _loadDanmaku(int generation) async {
     final source = _danmakuSource;
     if (source == null) return;
+    _danmakuSession?.dispose();
+    _danmakuSession = null;
     _danmakuRequest?.cancel();
+    if (source.format == 'extension') {
+      final session = _danmakuSession = DanmakuSession(
+        windowSeconds: source.windowSeconds,
+        load: (from, to, token) =>
+            Sources.danmaku(widget.item, source.url, from, to),
+        onChanged: (comments, loading, message) {
+          if (mounted && generation == _generation) {
+            _setComments(
+              comments: comments,
+              loading: loading,
+              message: message,
+            );
+          }
+        },
+      );
+      await session.update(
+        _player.state.position.inMilliseconds / 1000,
+        force: true,
+      );
+      return;
+    }
     final token = _danmakuRequest = CancelToken();
     _setComments(loading: true);
     try {
@@ -174,6 +209,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     );
     if (selected == null || !mounted || generation != _generation) return;
     _danmakuRequest?.cancel();
+    _danmakuSession?.dispose();
+    _danmakuSession = null;
     try {
       final file = selected.files.single;
       if (file.size > 8 * 1024 * 1024 || file.path == null) {
@@ -218,6 +255,13 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
                   onChanged: (value) {
                     _danmaku.value = display.copyWith(enabled: value);
                     Storage.setSetting('danmakuEnabled', value);
+                    if (value) {
+                      unawaited(
+                        _danmakuSession?.update(
+                          _player.state.position.inMilliseconds / 1000,
+                        ),
+                      );
+                    }
                   },
                 ),
                 _slider(
