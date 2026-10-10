@@ -2,7 +2,9 @@
 library;
 
 import 'comments.dart';
+import 'danmaku.dart';
 export 'comments.dart';
+export 'danmaku.dart';
 
 /// The three content categories. Miru uses `manga` / `fikushon` / `bangumi`,
 /// we accept those plus plain english aliases.
@@ -374,12 +376,14 @@ class AnimeWatch {
 
   /// Optional per-result routing override ('direct' | 'proxy') for the player.
   final String? netMode;
+  final DanmakuSource? danmaku;
 
   const AnimeWatch({
     required this.type,
     required this.url,
     this.headers = const {},
     this.netMode,
+    this.danmaku,
   });
 
   factory AnimeWatch.fromJson(Map json) => AnimeWatch(
@@ -387,6 +391,7 @@ class AnimeWatch {
         url: (json['url'] ?? '').toString(),
         headers: _headers(json),
         netMode: json['netMode']?.toString(),
+        danmaku: DanmakuSource.fromJson(json['danmaku']),
       );
 }
 

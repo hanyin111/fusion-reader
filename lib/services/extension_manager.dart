@@ -40,7 +40,7 @@ class ExtensionManager extends ChangeNotifier {
   ExtensionCatalog? catalog;
   bool checkingRepository = false;
   String? repositoryError;
-  String appVersion = '1.4.1';
+  String appVersion = '1.4.2';
   final Set<String> _installing = {};
   final Set<String> _downloading = {};
   bool isInstalling(String package) =>
