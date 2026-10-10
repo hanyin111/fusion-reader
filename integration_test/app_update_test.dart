@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:fusion_reader/pages/app_update_page.dart';
 import 'package:fusion_reader/services/app_update_controller.dart';
 
@@ -35,9 +36,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(controller.error, isEmpty);
-      expect(controller.currentVersion, '1.4.2');
+      final installed = await PackageInfo.fromPlatform();
+      expect(controller.currentVersion, installed.version);
       expect(controller.release, isNotNull);
-      expect(find.textContaining('当前版本 v1.4.2'), findsOneWidget);
+      expect(find.textContaining('当前版本 v${installed.version}'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

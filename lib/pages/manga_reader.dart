@@ -222,14 +222,16 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   }
 
   Widget _image(String url, MangaWatch watch, {BoxFit fit = BoxFit.contain}) {
-    return SourceImage(
-      url: url,
-      package: widget.item.package,
-      netMode: watch.netMode,
-      headers: watch.headers,
-      fit: fit,
-      error: const Center(
-        child: Icon(Icons.broken_image, color: Colors.white54),
+    return MangaWheelRegion(
+      child: SourceImage(
+        url: url,
+        package: widget.item.package,
+        netMode: watch.netMode,
+        headers: watch.headers,
+        fit: fit,
+        error: const Center(
+          child: Icon(Icons.broken_image, color: Colors.white54),
+        ),
       ),
     );
   }

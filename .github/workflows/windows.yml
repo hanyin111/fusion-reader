@@ -55,6 +55,10 @@ jobs:
             if ($operation.ExitCode -notin @(0,3010)) { throw 'ATL installation failed' }
           }
       - run: flutter pub get
+      - name: Test caching, Windows mouse input and updates
+        run: flutter test --no-pub test/cache_download_queue_test.dart test/manga_zoom_test.dart test/manga_reader_zoom_test.dart test/offline_catalog_test.dart test/app_update_test.dart
+      - name: Test Windows update rollback
+        run: python -m unittest discover -s test -p windows_updater_test.py
       - name: Build tagged Windows app
         run: flutter build windows --release --no-pub --dart-define="FUSION_SYNC_URL=$env:FUSION_SYNC_URL"
       - name: Package and verify release
@@ -68,7 +72,9 @@ jobs:
           $zip = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $archive))
           try {
             $names = @($zip.Entries.FullName | ForEach-Object { $_.Replace('\','/') })
-            if ('fusion_reader.exe' -notin $names -or 'data/app.so' -notin $names) { throw 'Incomplete Windows package' }
+            foreach ($required in @('fusion_reader.exe', 'flutter_windows.dll', 'data/app.so', 'data/flutter_assets/assets/update_windows.ps1')) {
+              if ($required -notin $names) { throw "Incomplete Windows package: $required" }
+            }
           } finally { $zip.Dispose() }
           Get-FileHash $archive -Algorithm SHA256
       - uses: actions/upload-artifact@v4

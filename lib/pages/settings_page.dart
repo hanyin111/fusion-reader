@@ -5,6 +5,7 @@ import '../services/offline_cache.dart';
 import '../services/account_service.dart';
 import 'account_page.dart';
 import 'app_update_page.dart';
+import 'cache_list_page.dart';
 import 'library_transfer_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -101,6 +102,19 @@ class _SettingsPageState extends State<SettingsPage> {
                             : byType.entries
                                   .map((e) => '${label(e.key)} ${e.value}')
                                   .join(' · '),
+                      ),
+                    ),
+                    ListTile(
+                      leading: const Icon(Icons.downloading_outlined),
+                      title: const Text('缓存列表'),
+                      subtitle: Text(
+                        '进行中的任务 ${OfflineCache.instance.queue.activeCount} 项',
+                      ),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CacheListPage(),
+                        ),
                       ),
                     ),
                     if (entries.isNotEmpty)

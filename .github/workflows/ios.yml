@@ -66,7 +66,7 @@ jobs:
           open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID"
           xcrun simctl bootstatus "$DEVICE_ID" -b
       - name: Test danmaku parsing and playback timeline
-        run: flutter test --no-pub test/app_update_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
+        run: flutter test --no-pub test/cache_download_queue_test.dart test/manga_zoom_test.dart test/app_update_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
       - name: Test extension runtime on iOS simulator
         timeout-minutes: 25
         run: |
@@ -77,6 +77,11 @@ jobs:
         run: |
           set -o pipefail
           flutter test integration_test/history_font_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-history-font-test.log
+      - name: Test cache queue after leaving the directory on iOS simulator
+        timeout-minutes: 10
+        run: |
+          set -o pipefail
+          flutter test integration_test/cache_queue_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-cache-queue-test.log
       - name: Test library import and export on iOS simulator
         timeout-minutes: 10
         run: |

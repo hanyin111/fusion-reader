@@ -1,4 +1,38 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
+
+/// Comic pages claim wheel events before their ancestor Scrollable sees them.
+/// InteractiveViewer still handles zoom, without also scrolling the chapter.
+class MangaWheelRegion extends StatelessWidget {
+  final Widget child;
+  const MangaWheelRegion({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (defaultTargetPlatform != TargetPlatform.windows) return child;
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerSignal: (event) {
+        if (event is PointerScrollEvent &&
+            event.kind == PointerDeviceKind.mouse) {
+          GestureBinding.instance.pointerSignalResolver.register(event, (_) {});
+        }
+      },
+      child: child,
+    );
+  }
+}
+
+class _WindowsMangaScrollBehavior extends MaterialScrollBehavior {
+  const _WindowsMangaScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+    ...super.dragDevices,
+    PointerDeviceKind.mouse,
+  };
+}
 
 /// Keeps the scroll view's drag recognizer out of two-finger zoom gestures.
 /// While magnified, one finger pans the image instead of changing pages.
@@ -97,7 +131,12 @@ class MangaZoomViewState extends State<MangaZoomView> {
             maxScale: 5,
             panEnabled: _zoomed,
             scaleEnabled: true,
-            child: widget.builder(canScroll),
+            child: defaultTargetPlatform == TargetPlatform.windows
+                ? ScrollConfiguration(
+                    behavior: const _WindowsMangaScrollBehavior(),
+                    child: widget.builder(canScroll),
+                  )
+                : widget.builder(canScroll),
           ),
         ),
       );

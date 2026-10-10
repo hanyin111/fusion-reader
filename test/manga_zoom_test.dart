@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fusion_reader/widgets/manga_zoom_view.dart';
 
@@ -17,6 +18,111 @@ Future<void> pinch(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'Windows wheel only zooms, while mouse drags scroll and pan',
+    (tester) async {
+      tester.view.physicalSize = const Size(400, 600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final key = GlobalKey<MangaZoomViewState>();
+      final scroll = ScrollController();
+      addTearDown(scroll.dispose);
+      var percent = 100;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MangaZoomView(
+            key: key,
+            onZoomChanged: (value) => percent = value,
+            builder: (scrolling) => ListView.builder(
+              controller: scroll,
+              physics: scrolling ? null : const NeverScrollableScrollPhysics(),
+              itemCount: 20,
+              itemBuilder: (_, index) => MangaWheelRegion(
+                child: SizedBox(height: 500, child: Text('page $index')),
+              ),
+            ),
+          ),
+        ),
+      );
+      Future<void> wheel(double dy) async {
+        await tester.sendEventToBinding(
+          PointerScrollEvent(
+            position: const Offset(200, 300),
+            scrollDelta: Offset(0, dy),
+            kind: PointerDeviceKind.mouse,
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await wheel(80); // At minimum scale it must not scroll the comic either.
+      expect(percent, 100);
+      expect(scroll.offset, 0);
+      await wheel(-120);
+      expect(percent, greaterThan(100));
+      expect(scroll.offset, 0);
+      final transform = tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .transformationController!;
+      final before = transform.value.clone();
+      await tester.dragFrom(
+        const Offset(220, 350),
+        const Offset(40, 40),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+      expect(transform.value, isNot(before));
+      expect(scroll.offset, 0);
+      key.currentState!.reset();
+      await tester.pumpAndSettle();
+      await tester.dragFrom(
+        const Offset(200, 400),
+        const Offset(0, -180),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+      expect(scroll.offset, greaterThan(100));
+      final offset = scroll.offset;
+      await wheel(-100);
+      expect(percent, greaterThan(100));
+      expect(scroll.offset, offset);
+      key.currentState!.reset();
+      await tester.pumpAndSettle();
+      final pages = PageController();
+      addTearDown(pages.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MangaZoomView(
+            key: key,
+            onZoomChanged: (value) => percent = value,
+            builder: (scrolling) => PageView(
+              controller: pages,
+              physics: scrolling ? null : const NeverScrollableScrollPhysics(),
+              children: const [
+                MangaWheelRegion(child: ColoredBox(color: Colors.red)),
+                MangaWheelRegion(child: ColoredBox(color: Colors.blue)),
+              ],
+            ),
+          ),
+        ),
+      );
+      await wheel(-100);
+      expect(percent, greaterThan(100));
+      expect(pages.page, 0);
+      key.currentState!.reset();
+      await tester.pumpAndSettle();
+      await tester.dragFrom(
+        const Offset(330, 300),
+        const Offset(-290, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+      expect(pages.page, 1);
+      expect(tester.takeException(), isNull);
+    },
+    variant: TargetPlatformVariant.only(TargetPlatform.windows),
+  );
+
   testWidgets(
     'pinch and double tap zoom without turning pages or opening the menu; reset restores swipes',
     (tester) async {

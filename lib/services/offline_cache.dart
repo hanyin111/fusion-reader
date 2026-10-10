@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/models.dart';
+import 'cache_download_queue.dart';
 import 'network.dart';
 import 'image_loader.dart';
 import 'source_image_codec.dart';
@@ -29,8 +30,17 @@ class DownloadProgress {
 /// hosts, video CDNs expire links), so caching the *addresses* would rot within
 /// the hour. Everything here therefore stores the actual bytes.
 class OfflineCache extends ChangeNotifier {
-  OfflineCache._();
+  OfflineCache._() {
+    queue = CacheDownloadQueue(
+      download: (task) =>
+          _download(task.item, task.episode, detail: task.detail),
+      isCached: (item, episode) => read(item.package, episode.url) != null,
+      cancelDownload: (key) => _cancels[key]?.cancel('用户取消'),
+    );
+    queue.addListener(notifyListeners);
+  }
   static final OfflineCache instance = OfflineCache._();
+  late final CacheDownloadQueue queue;
 
   static late Directory _root;
   static late Box _manifests;
@@ -40,8 +50,12 @@ class OfflineCache extends ChangeNotifier {
   final Map<String, DownloadProgress> _active = {};
   final Map<String, CancelToken> _cancels = {};
 
-  DownloadProgress? progressOf(String key) => _active[key];
-  bool isDownloading(String key) => _active.containsKey(key);
+  DownloadProgress? progressOf(String key) =>
+      _active[key] ??
+      (queue.taskOf(key)?.state == CacheTaskState.queued
+          ? const DownloadProgress(0, 1, '等待缓存')
+          : null);
+  bool isDownloading(String key) => queue.taskOf(key)?.isActive == true;
 
   static String keyOf(String package, String episodeUrl) =>
       '$package|$episodeUrl';
@@ -145,17 +159,32 @@ class OfflineCache extends ChangeNotifier {
 
   // ---------- download ----------
 
-  Future<void> cancel(String key) async {
-    _cancels[key]?.cancel('用户取消');
-  }
+  Future<void> cancel(String key) => queue.cancel(key);
+
+  int enqueueAll(
+    MediaItem item,
+    Iterable<MediaEpisode> episodes, {
+    MediaDetail? detail,
+  }) => queue.enqueueAll(item, episodes, detail: detail);
 
   Future<void> download(
     MediaItem item,
     MediaEpisode episode, {
     MediaDetail? detail,
   }) async {
+    final task = queue.enqueue(item, episode, detail: detail);
+    if (task == null) return;
+    await task.finished;
+    if (task.state == CacheTaskState.failed) throw Exception(task.error);
+  }
+
+  Future<void> _download(
+    MediaItem item,
+    MediaEpisode episode, {
+    MediaDetail? detail,
+  }) async {
     final key = keyOf(item.package, episode.url);
-    if (_active.containsKey(key) || has(item.package, episode.url)) return;
+    if (read(item.package, episode.url) != null) return;
 
     final cancelToken = CancelToken();
     _cancels[key] = cancelToken;
@@ -176,7 +205,9 @@ class OfflineCache extends ChangeNotifier {
           // direct download can still succeed if only the chapter is online.
         }
       }
+      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
       final raw = await Sources.watch(item, episode.url);
+      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
 
       late Map payload;
       var bytes = 0;
@@ -207,6 +238,7 @@ class OfflineCache extends ChangeNotifier {
           );
       }
 
+      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
       await _manifests.put(key, {
         'key': key,
         'package': item.package,
@@ -223,6 +255,7 @@ class OfflineCache extends ChangeNotifier {
         'savedAt': DateTime.now().millisecondsSinceEpoch,
       });
       if (catalog != null) await saveDetail(item, catalog);
+      if (cancelToken.isCancelled) throw cancelToken.cancelError!;
     } catch (e) {
       // Never leave a half-written chapter that would read as complete.
       try {
@@ -438,6 +471,7 @@ class OfflineCache extends ChangeNotifier {
 
   static Future<void> remove(String package, String episodeUrl) async {
     final key = keyOf(package, episodeUrl);
+    await instance.cancel(key);
     final itemKey = manifest(package, episodeUrl)?['itemKey']?.toString();
     final dir = Directory(
       '${_root.path}${Platform.pathSeparator}${key.hashCode.toRadixString(16)}',
@@ -447,16 +481,19 @@ class OfflineCache extends ChangeNotifier {
     } catch (_) {}
     await _manifests.delete(key);
     if (itemKey != null && !hasWork(itemKey)) await _catalogs.delete(itemKey);
+    instance.queue.forget(key);
     instance.notifyListeners();
   }
 
   static Future<void> clearAll() async {
+    await instance.queue.cancelAll();
     try {
       if (_root.existsSync()) _root.deleteSync(recursive: true);
       _root.createSync(recursive: true);
     } catch (_) {}
     await _manifests.clear();
     await _catalogs.clear();
+    instance.queue.clearFinished();
     instance.notifyListeners();
   }
 
@@ -500,7 +537,11 @@ class OfflineCache extends ChangeNotifier {
     }
     if (SourceImageCodec.episodeId(package, url) != null) {
       final data = await SourceImageCache.fetchBytes(
-        package, url, headers: headers, netMode: netMode, cancelToken: cancelToken,
+        package,
+        url,
+        headers: headers,
+        netMode: netMode,
+        cancelToken: cancelToken,
       );
       if (cancelToken?.isCancelled ?? false) throw cancelToken!.cancelError!;
       await File(target).writeAsBytes(data);

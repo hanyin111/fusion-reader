@@ -9,6 +9,7 @@ import '../services/storage.dart';
 import '../widgets/media_card.dart';
 import '../widgets/comments_button.dart';
 import '../widgets/source_image.dart';
+import '../widgets/cache_selection_dialog.dart';
 import 'author_search_page.dart';
 import 'manga_reader.dart';
 import 'novel_reader.dart';
@@ -189,6 +190,33 @@ class _DetailPageState extends State<DetailPage> {
   }
 
   /// Queue every episode in the current group, skipping cached ones.
+  Future<void> _cacheSelection(MediaEpisodeGroup group) async {
+    final history = Storage.historyOf(widget.item.key);
+    final current = group.urls.indexWhere(
+      (episode) => episode.url == history?.episodeUrl,
+    );
+    final selected = await showDialog<List<MediaEpisode>>(
+      context: context,
+      builder: (_) => CacheSelectionDialog(
+        group: group,
+        initialChapter: current < 0 ? 1 : current + 1,
+      ),
+    );
+    if (!mounted || selected == null) return;
+    final added = OfflineCache.instance.enqueueAll(
+      _displayItem,
+      selected,
+      detail: _detail,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          added == 0 ? '所选章节已缓存或已在列表中' : '已加入 $added 项，离开目录页后会继续缓存',
+        ),
+      ),
+    );
+  }
+
   Future<void> _cacheAll(MediaEpisodeGroup group) async {
     final pending = group.urls
         .where((e) => !OfflineCache.has(widget.item.package, e.url))
@@ -216,28 +244,17 @@ class _DetailPageState extends State<DetailPage> {
         ],
       ),
     );
-    if (confirmed != true) return;
-
-    var failed = 0;
-    for (final ep in pending) {
-      if (!mounted) return;
-      try {
-        await OfflineCache.instance.download(_displayItem, ep, detail: _detail);
-      } catch (_) {
-        failed++;
-      }
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            failed == 0
-                ? '已缓存 ${pending.length} 项'
-                : '完成，${pending.length - failed} 项成功，$failed 项失败',
-          ),
-        ),
-      );
-    }
+    if (confirmed != true || !mounted) return;
+    final added = OfflineCache.instance.enqueueAll(
+      _displayItem,
+      pending,
+      detail: _detail,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(added == 0 ? '内容已在缓存列表中' : '已加入 $added 项，离开目录页后会继续缓存'),
+      ),
+    );
   }
 
   @override
@@ -423,13 +440,24 @@ class _DetailPageState extends State<DetailPage> {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Row(
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
               children: [
                 Text(
                   '共 ${group?.urls.length ?? 0} 个章节/剧集',
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
-                const Spacer(),
+                if (group != null &&
+                    group.urls.isNotEmpty &&
+                    !LocalLibrary.isLocal(widget.item.package))
+                  TextButton.icon(
+                    icon: const Icon(Icons.playlist_add, size: 18),
+                    label: const Text('自定义缓存'),
+                    onPressed: () => _cacheSelection(group),
+                  ),
                 if (group != null && !LocalLibrary.isLocal(widget.item.package))
                   TextButton.icon(
                     icon: const Icon(
@@ -440,16 +468,24 @@ class _DetailPageState extends State<DetailPage> {
                     onPressed: () => _cacheAll(group),
                   ),
                 if (detail.episodes.length > 1)
-                  DropdownButton<int>(
-                    value: _groupIndex,
-                    items: [
-                      for (var i = 0; i < detail.episodes.length; i++)
-                        DropdownMenuItem(
-                          value: i,
-                          child: Text(detail.episodes[i].title),
-                        ),
-                    ],
-                    onChanged: (v) => setState(() => _groupIndex = v ?? 0),
+                  SizedBox(
+                    width: 160,
+                    child: DropdownButton<int>(
+                      isExpanded: true,
+                      value: _groupIndex,
+                      items: [
+                        for (var i = 0; i < detail.episodes.length; i++)
+                          DropdownMenuItem(
+                            value: i,
+                            child: Text(
+                              detail.episodes[i].title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (v) => setState(() => _groupIndex = v ?? 0),
+                    ),
                   ),
               ],
             ),
