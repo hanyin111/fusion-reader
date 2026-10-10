@@ -17,7 +17,7 @@ void main() {
   isolateLinovelibTestStorage();
   MediaKit.ensureInitialized();
   testWidgets(
-    'official App API browses, plays and loads episode danmaku',
+    'official App API browses, plays, loads danmaku and work comments',
     (tester) async {
       await tester.runAsync(() async {
         await Storage.init();
@@ -27,6 +27,7 @@ void main() {
           await File(scriptPath).readAsString(),
         );
         final service = await manager.ensureLoaded(extension.package);
+        expect(extension.commentScope, CommentScope.work);
         expect(await service.channels(), isNotEmpty);
         expect(await service.latest(1, channel: '1'), isNotEmpty);
         expect(await service.latest(2, channel: '1'), isNotEmpty);
@@ -44,6 +45,32 @@ void main() {
         expect(rows, isNotEmpty);
         expect(rows.any((row) => row.mode == DanmakuMode.top), isTrue);
         expect(await service.danmaku(watch.danmaku!.url, 600, 780), isNotEmpty);
+        final comments = await service.comments(
+          item.url,
+          group.urls.first.url,
+          1,
+        );
+        expect(comments.comments, isNotEmpty);
+        expect(comments.hasMore, isTrue);
+        final next = await service.comments(item.url, group.urls.first.url, 2);
+        expect(next.comments, isNotEmpty);
+        expect(
+          next.comments
+              .map((row) => row.id)
+              .toSet()
+              .intersection(comments.comments.map((row) => row.id).toSet()),
+          isEmpty,
+        );
+        final parent = comments.comments.firstWhere(
+          (row) => row.replyCount > 0,
+        );
+        final replies = await service.comments(
+          item.url,
+          group.urls.first.url,
+          1,
+          parentId: parent.id,
+        );
+        expect(replies.comments, isNotEmpty);
         final player = Player();
         try {
           await configurePlayerFor(player, 'omofun', watch);

@@ -14,6 +14,7 @@ import '../services/player_config.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
 import '../widgets/danmaku_overlay.dart';
+import 'comments_page.dart';
 
 class VideoPlayerPage extends StatefulWidget {
   final MediaItem item;
@@ -369,28 +370,31 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             DanmakuOverlay(player: _player, display: display),
       ),
       // The library recreates this builder in its fullscreen route, keeping
-      // both the overlay and its settings button available there.
+      // the overlay, speed menu and comment/settings buttons available there.
       MaterialVideoControlsTheme(
         normal: kDefaultMaterialVideoControlsThemeData.copyWith(
-          topButtonBar: _danmakuButtons(state),
+          topButtonBar: _playerButtons(state),
         ),
         fullscreen: kDefaultMaterialVideoControlsThemeDataFullscreen.copyWith(
-          topButtonBar: _danmakuButtons(state),
+          topButtonBar: _playerButtons(state),
         ),
         child: MaterialDesktopVideoControlsTheme(
           normal: kDefaultMaterialDesktopVideoControlsThemeData.copyWith(
-            topButtonBar: _danmakuButtons(state),
+            topButtonBar: _playerButtons(state),
           ),
           fullscreen: kDefaultMaterialDesktopVideoControlsThemeDataFullscreen
-              .copyWith(topButtonBar: _danmakuButtons(state)),
+              .copyWith(topButtonBar: _playerButtons(state)),
           child: AdaptiveVideoControls(state),
         ),
       ),
     ],
   );
 
-  List<Widget> _danmakuButtons(VideoState state) => [
+  List<Widget> _playerButtons(VideoState state) => [
     const Spacer(),
+    _rateButton(color: Colors.white),
+    if (Sources.commentScope(widget.item) != null)
+      _commentsButton(state.context, color: Colors.white),
     IconButton(
       tooltip: '弹幕设置',
       color: Colors.white,
@@ -398,6 +402,77 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       onPressed: () => _danmakuSettings(state.context),
     ),
   ];
+
+  Widget _rateButton({Color? color}) => StreamBuilder<double>(
+    stream: _player.stream.rate,
+    builder: (context, snapshot) {
+      // Fullscreen controls reuse their widget list after hiding it. Read the
+      // player's current rate when remounting, instead of a stale initialData.
+      final current = snapshot.data ?? _player.state.rate;
+      return PopupMenuButton<double>(
+        tooltip: '播放速度',
+        initialValue: current,
+        itemBuilder: (context) => [
+          for (final rate in _rates)
+            PopupMenuItem(
+              value: rate,
+              // Video controls can unmount while this menu is open. Handle
+              // selection on the menu item so it still reaches the player.
+              onTap: () {
+                if (mounted) unawaited(_setRate(rate));
+              },
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(rate == current ? Icons.check : null, size: 16),
+                  const SizedBox(width: 8),
+                  Text(rate == 1.0 ? '正常' : '${_label(rate)}x'),
+                ],
+              ),
+            ),
+        ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Center(
+            child: Text(
+              '${_label(current)}x',
+              style: TextStyle(
+                color: color,
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  Widget _commentsButton(BuildContext context, {Color? color}) => IconButton(
+    tooltip: Sources.commentScope(widget.item)?.label,
+    color: color,
+    icon: const Icon(Icons.chat_bubble_outline),
+    onPressed: () => _openComments(context),
+  );
+
+  Future<void> _openComments(BuildContext context) async {
+    final scope = Sources.commentScope(widget.item);
+    if (scope == null) return;
+    final generation = _generation;
+    final episode = _episode;
+    final wasPlaying = _player.state.playing;
+    await _player.pause();
+    if (!mounted || !context.mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) =>
+            CommentsPage(item: widget.item, episode: episode, scope: scope),
+      ),
+    );
+    if (mounted && generation == _generation && wasPlaying) {
+      await _player.play();
+    }
+  }
 
   /// Trim "1.50" down to "1.5" but keep "1.25" intact.
   static String _label(double rate) => rate
@@ -437,37 +512,9 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             icon: const Icon(Icons.subtitles_outlined),
             onPressed: () => _danmakuSettings(context),
           ),
-          PopupMenuButton<double>(
-            tooltip: '播放速度',
-            initialValue: _rate,
-            onSelected: _setRate,
-            itemBuilder: (context) => [
-              for (final rate in _rates)
-                PopupMenuItem(
-                  value: rate,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(rate == _rate ? Icons.check : null, size: 16),
-                      const SizedBox(width: 8),
-                      Text(rate == 1.0 ? '正常' : '${_label(rate)}x'),
-                    ],
-                  ),
-                ),
-            ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Center(
-                child: Text(
-                  '${_label(_rate)}x',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ),
-          ),
+          _rateButton(color: Colors.white),
+          if (Sources.commentScope(widget.item) != null)
+            _commentsButton(context),
           IconButton(
             tooltip: '上一集',
             icon: const Icon(Icons.skip_previous),
