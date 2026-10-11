@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="聚阅：书页与播放">
+  <rect width="512" height="512" rx="112" fill="#624580"/>
+  <path d="M94 154c52-18 103-11 150 17v196c-47-28-98-35-150-17V154Z" fill="#F9F5FC"/>
+  <path d="M268 171c47-28 98-35 150-17v196c-52-18-103-11-150 17V171Z" fill="#F9F5FC"/>
+  <path d="m324 215 62 42-62 42v-84Z" fill="#624580" stroke="#624580" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M125 216c28-4 56 0 86 13m-86 29c28-4 56 0 86 13" fill="none" stroke="#624580" stroke-width="13" stroke-linecap="round"/>
+</svg>

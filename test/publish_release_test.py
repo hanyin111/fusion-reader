@@ -42,6 +42,13 @@ class PublishReleaseTests(unittest.TestCase):
                 publisher.publish('owner/app', 'v1.3.8', '1.4.0')
             api.assert_not_called()
 
+    def test_source_update_notes_never_publish_or_archive_app_releases(self):
+        for body in ('插件更新 v1.2.3', 'Plugin update', 'https://example.com/fusion-reader-extensions'):
+            with self.subTest(body=body), patch.object(publisher, 'api', return_value=[dict(self.release, body=body)]) as api:
+                with self.assertRaisesRegex(ValueError, 'only the app'):
+                    publisher.publish('owner/app', 'v1.4.0', '1.4.0')
+                self.assertEqual(api.call_count, 1)
+
     def test_mobile_release_does_not_require_desktop_or_plugin_feed_or_hide_previous_desktop_release(self):
         assets = [a for a in self.assets if a['name'].endswith(('.apk', '.ipa'))]
         release = dict(self.release, assets=assets)

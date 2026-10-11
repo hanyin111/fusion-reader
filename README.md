@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="assets/icon/whitehair-girl-1024.png" width="128" alt="聚阅图标">
+  <img src="website/icon.svg" width="128" alt="聚阅图标：打开的书与播放符号">
 </p>
 
 # FusionReader 聚阅
 
 漫画、小说、动画放在同一个书架里。聚阅使用 Flutter 构建，支持在线阅读、本地文件、离线缓存，以及跨设备迁移书架和阅读进度。
 
-[下载正式版](https://github.com/hanyin111/fusion-reader/releases/latest) · [插件网页](https://hanyin111.github.io/fusion-reader-extensions/) · [独立插件项目](https://github.com/hanyin111/fusion-reader-extensions)
+[聚阅官网](https://reader.hansilver.store/) · [下载正式版](https://github.com/hanyin111/fusion-reader/releases/latest) · [插件网页](https://hanyin111.github.io/fusion-reader-extensions/) · [独立插件项目](https://github.com/hanyin111/fusion-reader-extensions)
 
 ## 下载与安装
 

@@ -34,17 +34,11 @@ DPlayer 格式为 `{ "code": 0, "data": [[秒数, 类型, RGB整数, 用户, 文
 
 脚本可使用 `await this.grpcRequest({endpoint, method, data, metadata, certificate})` 调用 TLS gRPC 的一元接口。`data` 和返回值为 protobuf 字节的 Base64；具体服务名和消息编码由插件实现，本体不内置站点地址。每次请求限时 10 秒，响应上限 8 MB。默认使用系统证书验证；若插件提供 PEM 证书，则证书错误只能通过该证书的精确 SHA-256 校验，其他证书仍会被拒绝。
 
-## Omofun 接入与验证
+## 播放器验证
 
-2026-10-10 对用户提供的官方桌面 App 2.0.1 做只读分析，并实测其公开的分类、搜索、作品详情、播放地址、弹幕读取接口。读取这些接口无需账号令牌或请求签名；没有使用登录数据，也没有提取或分发共享签名密钥。网站打不开时 App 仍可用，符合其独立接口的实际测试结果；网页 TLS 失败的具体原因仍无法确认。
-
-独立插件 Omofun v1.1.1 使用 App 接口，需应用 1.4.2 或更新版本提供 gRPC 桥接。旧书架可按完整标题唯一匹配作品；有同名歧义时提示重新搜索，避免错误绑定。播放线路若需要官方 App 专用加速组件，会明确提示切换其他线路。作品评论及回复也使用无需登录的公开读取接口，详情页和播放器提供入口，各集共享作品评论。
-
-Windows 真实运行时验证了分类、两页列表、搜索、目录、天堂线路的原生视频读取、同一集两个时间范围的弹幕，以及作品评论的两页分页和回复。全屏操作测试覆盖倍速选择、控制栏再次显示、评论导航和暂停恢复。普通 CI 使用本地模拟服务，不自动访问第三方站点；安卓与 iOS 仍需原生构建和设备测试。
+本体测试使用本地占位视频与模拟弹幕，覆盖时间同步、暂停恢复、倍速、进度跳转，以及全屏控制栏和评论导航。普通 CI 不自动访问第三方站点。具体站点的接入状态、脚本版本与接口验证由独立来源项目记录。
 
 ```sh
 flutter test test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
 flutter test integration_test/video_danmaku_test.dart -d windows
-# 实际接口检查仅在明确传入本地插件脚本时运行：
-flutter test integration_test/omofun_app_test.dart -d windows --dart-define=OMOFUN_SCRIPT=/absolute/path/omofun.js
 ```

@@ -34,6 +34,8 @@ def publish(repository, tag, version, *, include_linux=True):
     release = next((item for item in releases(repository) if item['tag_name'] == tag), None)
     if release is None:
         raise ValueError('Release draft was not found')
+    if re.search(r'插件|\bplugins?\b|fusion-reader-extensions', release.get('body') or '', re.I):
+        raise ValueError('App release notes must describe only the app; source updates belong in the separate extensions project')
     required = {*(f'FusionReader-{version}-android-{abi}.apk' for abi in ('arm64-v8a', 'armeabi-v7a', 'x86_64')),
         'FusionReader-ios-unsigned.ipa'}
     if include_linux:
