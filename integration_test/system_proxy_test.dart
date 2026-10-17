@@ -9,7 +9,9 @@ void main() {
 
   testWidgets('iOS system proxy bridge is registered on the real Flutter engine', (tester) async {
     if (!Platform.isIOS) return;
-    final settings = await SystemProxyResolver.channel.invokeMapMethod<String, dynamic>('settings');
+    final settings = await SystemProxyResolver.channel
+        .invokeMapMethod<String, dynamic>('settings')
+        .timeout(const Duration(seconds: 10));
     expect(settings, isNotNull);
     expect(settings!['http'], isA<String>());
     expect(settings['https'], isA<String>());
