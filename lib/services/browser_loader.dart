@@ -37,7 +37,8 @@ class BrowserLoader {
     if (!(Platform.isWindows ||
         Platform.isAndroid ||
         Platform.isIOS ||
-        Platform.isMacOS)) {
+        Platform.isMacOS ||
+        Platform.operatingSystem == 'ohos')) {
       throw UnsupportedError('此设备暂不支持浏览器正文加载，请使用 Windows、Android、iOS 或 macOS。');
     }
     final previous = _queue;
@@ -57,9 +58,11 @@ class BrowserLoader {
             directs: proxy.isEmpty ? ['*'] : [],
           ),
         );
-      } else if (!Platform.isWindows && proxy.isNotEmpty) {
+      } else if (!Platform.isWindows && !Platform.isIOS && proxy.isNotEmpty) {
         throw UnsupportedError('此设备的浏览器不支持代理覆盖，请使用系统网络。');
       }
+      // iOS WebKit already follows the system HTTP proxy/VPN. The discovered
+      // address is for Dart/mpv; WebKit needs no explicit proxy override.
       return await _load(url, headers, selector, rejectPattern, proxy, timeout);
     } finally {
       try {

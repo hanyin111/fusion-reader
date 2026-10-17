@@ -66,7 +66,12 @@ jobs:
           open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID"
           xcrun simctl bootstatus "$DEVICE_ID" -b
       - name: Test danmaku parsing and playback timeline
-        run: flutter test --no-pub test/cache_download_queue_test.dart test/manga_zoom_test.dart test/app_update_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
+        run: flutter test --no-pub test/network_proxy_test.dart test/cache_download_queue_test.dart test/manga_zoom_test.dart test/app_update_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
+      - name: Test system proxy bridge on iOS simulator
+        timeout-minutes: 5
+        run: |
+          set -o pipefail
+          flutter test integration_test/system_proxy_test.dart -d "$DEVICE_ID" --no-pub --timeout 2m --reporter expanded 2>&1 | tee build/verification/ios-system-proxy-test.log
       - name: Test video danmaku on iOS simulator
         timeout-minutes: 10
         run: |

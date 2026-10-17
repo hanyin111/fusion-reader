@@ -1,12 +1,35 @@
 import Flutter
 import UIKit
 import XCTest
+import CFNetwork
+@testable import Runner
 
 class RunnerTests: XCTestCase {
 
-  func testExample() {
-    // If you add code to the Runner application, consider adding tests here.
-    // See https://developer.apple.com/documentation/xctest for more information about using XCTest.
+  func testSystemHTTPProxyEndpoint() {
+    XCTAssertEqual(FusionSystemProxy.endpoint([[
+      kCFProxyTypeKey as String: kCFProxyTypeHTTP as String,
+      kCFProxyHostNameKey as String: "127.0.0.1",
+      kCFProxyPortNumberKey as String: NSNumber(value: 7890)
+    ]]), "127.0.0.1:7890")
+  }
+
+  func testIPv6ProxyEndpoint() {
+    XCTAssertEqual(FusionSystemProxy.endpoint([[
+      kCFProxyTypeKey as String: kCFProxyTypeHTTPS as String,
+      kCFProxyHostNameKey as String: "::1",
+      kCFProxyPortNumberKey as String: NSNumber(value: 7891)
+    ]]), "[::1]:7891")
+  }
+
+  func testDirectAndUnsupportedRoutesDoNotBecomeHTTPProxies() {
+    for type in [kCFProxyTypeNone, kCFProxyTypeSOCKS, kCFProxyTypeAutoConfigurationURL] {
+      XCTAssertEqual(FusionSystemProxy.endpoint([[
+        kCFProxyTypeKey as String: type as String,
+        kCFProxyHostNameKey as String: "127.0.0.1",
+        kCFProxyPortNumberKey as String: NSNumber(value: 7890)
+      ]]), "")
+    }
   }
 
 }

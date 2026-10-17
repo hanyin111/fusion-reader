@@ -15,9 +15,7 @@ class _DioFileService extends FileService {
   final String? netMode;
   _DioFileService(this.package, this.netMode);
 
-  Dio get _dio => netMode == null
-      ? Network.forPackage(package)
-      : (netMode == 'direct' ? Network.direct : Network.proxied);
+  Dio get _dio => Network.forPackage(package, override: netMode);
 
   @override
   Future<FileServiceResponse> get(
@@ -131,9 +129,7 @@ class SourceImageCache {
     String? netMode,
     CancelToken? cancelToken,
   }) async {
-    final dio = netMode == null
-        ? Network.forPackage(package)
-        : (netMode == 'direct' ? Network.direct : Network.proxied);
+    final dio = Network.forPackage(package, override: netMode);
     final response = await dio.get<List<int>>(
       SourceImageCodec.requestUrl(package, url),
       options: Options(

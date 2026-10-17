@@ -499,9 +499,8 @@ class OfflineCache extends ChangeNotifier {
 
   // ---------- helpers ----------
 
-  static Dio _dioFor(String package, String? netMode) => netMode == null
-      ? Network.forPackage(package)
-      : (netMode == 'direct' ? Network.direct : Network.proxied);
+  static Dio _dioFor(String package, String? netMode) =>
+      Network.forPackage(package, override: netMode);
 
   static String _resolve(String base, String ref) {
     if (ref.startsWith('http://') || ref.startsWith('https://')) return ref;

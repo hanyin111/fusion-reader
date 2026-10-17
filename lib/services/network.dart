@@ -5,6 +5,9 @@ import 'package:cookie_jar/cookie_jar.dart' show CookieJar;
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
+import 'package:flutter/foundation.dart';
+
+import 'proxy_resolver.dart';
 
 const kDefaultUserAgent =
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -16,13 +19,13 @@ const kDefaultUserAgent =
 /// while sites blocked in mainland China only work through one — so routing
 /// has to be decided per source, not globally.
 enum NetMode {
-  /// Follow the process environment, without application preferences.
+  /// Follow the system proxy and process environment.
   auto,
 
   /// Always bypass any proxy.
   direct,
 
-  /// Use the environment proxy when one is available.
+  /// Use the system/environment proxy when one is available.
   proxy;
 
   static NetMode fromString(String? s) {
@@ -41,16 +44,16 @@ class Network {
   static Dio? _proxied;
   static Dio? _direct;
 
-  /// Read the process environment; there is no application proxy setting.
-  static String resolvedProxy() {
-    final env = Platform.environment;
-    final raw =
-        env['HTTPS_PROXY'] ??
-        env['https_proxy'] ??
-        env['HTTP_PROXY'] ??
-        env['http_proxy'] ??
-        '';
-    return raw.replaceFirst(RegExp(r'^https?://'), '').trim();
+  static SystemProxyResolver _proxyResolver = systemProxyResolver;
+
+  static Future<void> prepare() => _proxyResolver.refresh();
+
+  static String resolvedProxy({Uri? uri}) => _proxyResolver.addressFor(uri);
+
+  @visibleForTesting
+  static void setProxyResolverForTesting(SystemProxyResolver? resolver) {
+    reload();
+    _proxyResolver = resolver ?? systemProxyResolver;
   }
 
   /// Defaults declared by extensions via `@network`, seeded at load time.
@@ -63,22 +66,23 @@ class Network {
 
   /// True when requests for [package] should go through a proxy, unless the
   /// caller supplies a per-result [override] such as a watch() netMode.
-  static bool usesProxyFor(String package, {String? override}) {
-    if (override == 'direct') return false;
-    if (override == 'proxy') return resolvedProxy().isNotEmpty;
-    switch (modeFor(package)) {
-      case NetMode.direct:
-        return false;
-      case NetMode.proxy:
-        return resolvedProxy().isNotEmpty;
-      case NetMode.auto:
-        return resolvedProxy().isNotEmpty;
-    }
+  static bool usesProxyFor(String package, {String? override, Uri? uri}) {
+    return _routeFor(package, override) != NetMode.direct &&
+        resolvedProxy(uri: uri).isNotEmpty;
   }
 
+  static NetMode _routeFor(String package, String? override) =>
+      override == 'direct' || override == 'proxy' || override == 'auto'
+      ? NetMode.fromString(override)
+      : modeFor(package);
+
   /// Dio configured for the given source's routing.
-  static Dio forPackage(String package) =>
-      usesProxyFor(package) ? proxied : direct;
+  static Dio forPackage(String package, {String? override}) {
+    final mode = _routeFor(package, override);
+    // Reading system settings is asynchronous. Do not choose DIRECT just
+    // because the first request arrived before proxy discovery finished.
+    return mode == NetMode.direct ? direct : proxied;
+  }
 
   static Dio get proxied => _proxied ??= _build(useProxy: true);
   static Dio get direct => _direct ??= _build(useProxy: false);
@@ -89,6 +93,7 @@ class Network {
     _direct?.close(force: true);
     _proxied = null;
     _direct = null;
+    _proxyResolver.invalidate();
   }
 
   static Dio _build({required bool useProxy}) {
@@ -104,15 +109,24 @@ class Network {
     // Some sites gate content behind a session cookie handed out on an earlier
     // page view, so cookies have to persist across requests.
     dio.interceptors.add(CookieManager(CookieJar()));
+    if (useProxy) {
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) async {
+            await prepare();
+            handler.next(options);
+          },
+        ),
+      );
+    }
 
     final adapter = IOHttpClientAdapter();
     adapter.createHttpClient = () {
       final client = HttpClient();
-      final proxy = useProxy ? resolvedProxy() : '';
       // An empty findProxy result means DIRECT, which is what we want when
       // bypassing — never fall through to HttpClient's env-var default.
-      client.findProxy = (_) => proxy.isEmpty ? 'DIRECT' : 'PROXY $proxy';
-      client.badCertificateCallback = (cert, host, port) => true;
+      client.findProxy = (uri) =>
+          useProxy ? _proxyResolver.findProxy(uri) : 'DIRECT';
       return client;
     };
     dio.httpClientAdapter = adapter;

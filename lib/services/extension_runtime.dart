@@ -274,19 +274,18 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
       if (meta.package != 'linovelib' || method != 'GET') {
         throw ExtensionException(meta.package, '浏览器加载仅用于哔哩轻小说的章节页面');
       }
+      await Network.prepare();
       return BrowserLoader.load(
         url: url,
         headers: headers,
         selector: (options['browserSelector'] ?? '#acontent').toString(),
         rejectPattern: (options['browserRejectPattern'] ?? '').toString(),
-        proxy: Network.usesProxyFor(meta.package, override: override)
-            ? Network.resolvedProxy()
+        proxy: Network.usesProxyFor(meta.package, override: override, uri: Uri.parse(url))
+            ? Network.resolvedProxy(uri: Uri.parse(url))
             : '',
       );
     }
-    final dio = override == null
-        ? Network.forPackage(meta.package)
-        : (override == 'direct' ? Network.direct : Network.proxied);
+    final dio = Network.forPackage(meta.package, override: override);
 
     // Some APIs report errors as 4xx with a JSON body; those extensions opt in
     // to receiving the body instead of an exception.

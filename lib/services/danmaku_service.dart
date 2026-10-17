@@ -11,9 +11,7 @@ class DanmakuService {
     DanmakuSource source, {
     CancelToken? cancelToken,
   }) async {
-    final client = Network.usesProxyFor(package, override: source.netMode)
-        ? Network.proxied
-        : Network.direct;
+    final client = Network.forPackage(package, override: source.netMode);
     var received = 0;
     final token = cancelToken ?? CancelToken();
     final response = await client

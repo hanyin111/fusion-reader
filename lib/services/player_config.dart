@@ -21,8 +21,10 @@ Future<void> configurePlayerFor(
 
   // libmpv reads http_proxy from the environment on its own; Chinese CDNs
   // reject foreign proxy exits, so the route must be stated explicitly.
-  final useProxy = Network.usesProxyFor(package, override: watch.netMode);
-  final proxy = Network.resolvedProxy();
+  await Network.prepare();
+  final uri = Uri.tryParse(watch.url);
+  final useProxy = Network.usesProxyFor(package, override: watch.netMode, uri: uri);
+  final proxy = Network.resolvedProxy(uri: uri);
   await platform.setProperty(
       'http-proxy', useProxy && proxy.isNotEmpty ? 'http://$proxy' : '');
 
@@ -55,9 +57,7 @@ Future<Media> buildMedia(String package, AnimeWatch watch) async {
   if (!isHls || isLocal) return Media(watch.url, httpHeaders: headers);
 
   try {
-    final dio = watch.netMode == null
-        ? Network.forPackage(package)
-        : (watch.netMode == 'direct' ? Network.direct : Network.proxied);
+    final dio = Network.forPackage(package, override: watch.netMode);
 
     Future<String> fetch(String url) async {
       final response = await dio.get<String>(

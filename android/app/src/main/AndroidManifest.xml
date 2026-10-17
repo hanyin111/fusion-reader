@@ -18,7 +18,7 @@
     <application
         android:label="聚阅"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher_whitehair"
+        android:icon="@mipmap/ic_launcher_book_play"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
