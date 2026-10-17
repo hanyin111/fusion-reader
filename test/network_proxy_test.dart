@@ -172,7 +172,7 @@ HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settin
   );
 
   test(
-    'iOS native settings route requests without environment variables',
+    'manual native settings route socket requests without environment variables',
     () async {
       Network.setProxyResolverForTesting(
         SystemProxyResolver(

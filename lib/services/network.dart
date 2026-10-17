@@ -7,6 +7,7 @@ import 'package:dio/io.dart';
 import 'package:dio_cookie_manager/dio_cookie_manager.dart';
 import 'package:flutter/foundation.dart';
 
+import 'apple_http_adapter.dart';
 import 'proxy_resolver.dart';
 
 const kDefaultUserAgent =
@@ -109,6 +110,12 @@ class Network {
     // Some sites gate content behind a session cookie handed out on an earlier
     // page view, so cookies have to persist across requests.
     dio.interceptors.add(CookieManager(CookieJar()));
+    if (useProxy && Platform.isIOS) {
+      // Native URLSession follows Apple's active system proxy/VPN rules.
+      // The manual endpoint resolver remains available for socket-based media.
+      dio.httpClientAdapter = AppleHttpAdapter();
+      return dio;
+    }
     if (useProxy) {
       dio.interceptors.add(
         InterceptorsWrapper(

@@ -66,8 +66,8 @@ jobs:
           open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID"
           xcrun simctl bootstatus "$DEVICE_ID" -b
       - name: Test danmaku parsing and playback timeline
-        run: flutter test --no-pub test/network_proxy_test.dart test/cache_download_queue_test.dart test/manga_zoom_test.dart test/app_update_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
-      - name: Test system proxy bridge on iOS simulator
+        run: flutter test --no-pub test/apple_http_adapter_test.dart test/network_proxy_test.dart test/cache_download_queue_test.dart test/manga_zoom_test.dart test/app_update_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
+      - name: Test native URLSession transport and proxy bridge on iOS simulator
         # This is the first native build on a fresh runner. CocoaPods, Xcode,
         # installation and debugger attachment share this step's wall time.
         timeout-minutes: 15

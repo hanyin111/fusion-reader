@@ -2,7 +2,7 @@ name: fusion_reader
 description: "FusionReader (聚阅) — manga / novel / anime aggregate reader with Miru-compatible JS extensions."
 publish_to: 'none'
 
-version: 1.4.4+18
+version: 1.4.4+19
 
 environment:
   sdk: ^3.12.2
@@ -20,6 +20,8 @@ dependencies:
 
   # Networking
   dio: ^5.7.0
+  cupertino_http: ^2.4.0
+  http: ^1.6.0
   grpc: ^5.1.0
   dio_cookie_manager: ^3.1.1
   cookie_jar: ^4.0.8
