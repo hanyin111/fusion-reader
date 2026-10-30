@@ -20,6 +20,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        SystemProxyBridge.register(flutterEngine, applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "app.fusionreader/updater")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

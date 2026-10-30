@@ -4,6 +4,10 @@
 
 Windows 读取本地设置不阻塞应用启动；首个请求等待读取完成，后续请求共用五秒缓存。环境变量 HTTP_PROXY/HTTPS_PROXY 优先于 Windows 系统设置，代理例外及 NO_PROXY 被保留。iOS 普通请求不依赖这份快照，也不强制覆盖系统的代理选择。
 
+Android 和 HarmonyOS 也通过原生桥接读取当前系统 HTTP 代理：Android 使用 `ConnectivityManager.getDefaultProxy()`，HarmonyOS 使用 `connection.getDefaultHttpProxy()`。这包括 VPN 对系统公开的 HTTP 代理；不绑定底层 Wi-Fi 或移动网络，不猜测本地端口。首个请求等待读取完成，HTTP 请求直接连接代理，HTTPS 使用 CONNECT 隧道，域名交由代理解析；已选中的代理连接失败时不会悄悄退回直连。封面、章节缓存、评论、弹幕和播放器可识别的手动代理共用这份设置。
+
+移动代理软件需要向系统公开 HTTP 代理，例如 Clash Mi 的“附加 HTTP 代理到 VPN”。只有 VPN/TUN 且不公开 HTTP 入口时，应用仍遵循系统 VPN 路由；应用无法替另一款软件修改分应用排除、分流规则或选择出口。此接入不等于强制改写 VPN 的全局配置，也不保证通过网站验证。
+
 普通请求、封面和漫画图片、章节缓存、弹幕与 HLS 播放列表使用相同路由。iOS 的仓库下载和应用更新检查也使用 URLSession。视频播放器的媒体连接仍由 libmpv 处理：可识别的手动 HTTP 代理通过 CFNetwork 原生桥接传递，其余 VPN 路由由系统处理；本次不将 libmpv 的传输宣称为 URLSession。iOS WebKit 由系统自行处理代理。独立 gRPC 传输不在本次 HTTP 代理变更范围内。
 
 来源协议已有的 `@network direct`、`@network proxy` 和请求或结果中的 `netMode` 继续有效。显式直连优先于自动跟随，`netMode: 'auto'` 可以恢复跟随系统。无新增应用内网络配置页，不保存或上传代理地址。

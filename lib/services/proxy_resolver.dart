@@ -109,16 +109,22 @@ class SystemProxyResolver {
   SystemProxyResolver({
     Map<String, String>? environment,
     Future<SystemProxySettings> Function()? loadSettings,
+    String? operatingSystem,
     this.refreshInterval = const Duration(seconds: 5),
   }) : environment = environment ?? Platform.environment,
-       _loadSettings = loadSettings ?? _platformSettings;
+       _loadSettings =
+           loadSettings ??
+           (() =>
+               _platformSettings(operatingSystem ?? Platform.operatingSystem));
 
-  static Future<SystemProxySettings> _platformSettings() async {
-    if (Platform.isIOS) {
-      final values = await channel.invokeMapMethod<String, dynamic>('settings');
+  static Future<SystemProxySettings> _platformSettings(String system) async {
+    if (system == 'ios' || system == 'android' || system == 'ohos') {
+      final values = await channel
+          .invokeMapMethod<String, dynamic>('settings')
+          .timeout(const Duration(seconds: 4));
       return SystemProxySettings.fromMap(values ?? const {});
     }
-    if (!Platform.isWindows) return const SystemProxySettings();
+    if (system != 'windows') return const SystemProxySettings();
     final result = await Process.run(
       '${Platform.environment['SystemRoot'] ?? r'C:\Windows'}\\System32\\reg.exe',
       [

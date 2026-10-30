@@ -14,9 +14,13 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'iOS system proxy bridge is registered on the real Flutter engine',
+    'mobile system proxy bridge is registered on the real Flutter engine',
     (tester) async {
-      if (!Platform.isIOS) return;
+      if (!(Platform.isIOS ||
+          Platform.isAndroid ||
+          Platform.operatingSystem == 'ohos')) {
+        return;
+      }
       final settings = await SystemProxyResolver.channel
           .invokeMapMethod<String, dynamic>('settings')
           .timeout(const Duration(seconds: 10));

@@ -9,6 +9,7 @@ import 'package:fusion_reader/services/network.dart';
 import 'package:fusion_reader/services/proxy_resolver.dart';
 
 void main() {
+  _NetworkTestBinding();
   late HttpServer origin;
   late HttpServer proxy;
   late String proxyAddress;
@@ -40,7 +41,11 @@ HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settin
       if (request.method == 'CONNECT') {
         request.response.statusCode = HttpStatus.badGateway;
       } else if (request.uri.path == '/comments.xml') {
-        request.response.headers.contentType = ContentType('text', 'xml', charset: 'utf-8');
+        request.response.headers.contentType = ContentType(
+          'text',
+          'xml',
+          charset: 'utf-8',
+        );
         request.response.write(
           '<i><d p="1,1,25,16777215,0,0,0,0">代理弹幕</d></i>',
         );
@@ -67,6 +72,8 @@ HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settin
   });
 
   tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemProxyResolver.channel, null);
     Network.setProxyResolverForTesting(null);
     Network.declaredModes.clear();
     await origin.close(force: true);
@@ -74,6 +81,67 @@ HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settin
   });
 
   String url(String path) => 'http://127.0.0.1:${origin.port}$path';
+
+  for (final system in ['android', 'ohos']) {
+    test(
+      '$system discovers the native VPN proxy before the first request',
+      () async {
+        var enabled = true;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemProxyResolver.channel, (
+              call,
+            ) async {
+              expect(call.method, 'settings');
+              await Future<void>.delayed(const Duration(milliseconds: 5));
+              return {
+                'http': enabled ? proxyAddress : '',
+                'https': enabled ? proxyAddress : '',
+                'bypass': ['*.internal.test'],
+              };
+            });
+        Network.setProxyResolverForTesting(
+          SystemProxyResolver(
+            environment: {},
+            operatingSystem: system,
+            refreshInterval: Duration.zero,
+          ),
+        );
+        Network.declaredModes['fixture'] = NetMode.proxy;
+        final client = Network.forPackage('fixture');
+        expect(
+          (await client.get<String>(url('/native-proxy'))).data,
+          'proxied',
+        );
+        expect(
+          Network.resolvedProxy(uri: Uri.parse('https://external.test')),
+          proxyAddress,
+        );
+        expect(
+          Network.resolvedProxy(uri: Uri.parse('https://reader.internal.test')),
+          '',
+        );
+        enabled = false;
+        expect((await client.get<String>(url('/vpn-off'))).data, 'direct');
+        expect(proxyRequests, hasLength(1));
+        expect(directRequests, hasLength(1));
+      },
+    );
+  }
+
+  test(
+    'a discovered proxy failure never retries the target directly',
+    () async {
+      await proxy.close(force: true);
+      await expectLater(
+        Network.forPackage(
+          'fixture',
+          override: 'proxy',
+        ).get<String>(url('/no-fallback')),
+        throwsA(isA<DioException>()),
+      );
+      expect(directRequests, isEmpty);
+    },
+  );
 
   test(
     'first concurrent source requests use Windows proxy without env variables',
@@ -267,4 +335,10 @@ ProxyOverride REG_SZ <local>;127.*;*.internal.test
       expect(proxyRequests, isEmpty);
     },
   );
+}
+
+class _NetworkTestBinding extends AutomatedTestWidgetsFlutterBinding {
+  // These tests exercise real loopback sockets, never public sites.
+  @override
+  bool get overrideHttpClient => false;
 }
