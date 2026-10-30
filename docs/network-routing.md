@@ -8,9 +8,11 @@ Android 和 HarmonyOS 也通过原生桥接读取当前系统 HTTP 代理：Andr
 
 移动代理软件需要向系统公开 HTTP 代理，例如 Clash Mi 的“附加 HTTP 代理到 VPN”。只有 VPN/TUN 且不公开 HTTP 入口时，应用仍遵循系统 VPN 路由；应用无法替另一款软件修改分应用排除、分流规则或选择出口。此接入不等于强制改写 VPN 的全局配置，也不保证通过网站验证。
 
+Android／HarmonyOS 的“设置 → 网络代理”支持手动填写 HTTP 代理地址，供系统未暴露代理入口的环境使用。明确填写的地址优先于环境变量、系统代理及其例外；显式要求直连的来源仍不经过 HTTP 代理。使用兼容环境里的代理时，需要它提供可从原生应用访问的入口；两个环境的 `127.0.0.1` 不应假定互通。设置只保存在本机，不加入 JSON 备份或账号同步。关闭手动代理后恢复系统路由，iOS／Windows 的现有网络实现保持原样。日志中的 `DIRECT` 仅表示未选择 HTTP 代理，不代表流量绕过了系统 VPN。
+
 普通请求、封面和漫画图片、章节缓存、弹幕与 HLS 播放列表使用相同路由。iOS 的仓库下载和应用更新检查也使用 URLSession。视频播放器的媒体连接仍由 libmpv 处理：可识别的手动 HTTP 代理通过 CFNetwork 原生桥接传递，其余 VPN 路由由系统处理；本次不将 libmpv 的传输宣称为 URLSession。iOS WebKit 由系统自行处理代理。独立 gRPC 传输不在本次 HTTP 代理变更范围内。
 
-来源协议已有的 `@network direct`、`@network proxy` 和请求或结果中的 `netMode` 继续有效。显式直连优先于自动跟随，`netMode: 'auto'` 可以恢复跟随系统。无新增应用内网络配置页，不保存或上传代理地址。
+来源协议已有的 `@network direct`、`@network proxy` 和请求或结果中的 `netMode` 继续有效。显式直连优先于自动跟随，`netMode: 'auto'` 可以恢复自动模式。手动代理地址不上传到同步服务。
 
 Windows 与显式直连使用原有 Dart HTTP 客户端。手动代理解析只接受不带认证的 HTTP CONNECT 地址，不将 PAC、SOCKS 或代理用户名密码错误转换成普通 HTTP 地址。iOS 自动模式交给系统原生传输决定。代理软件的规则仍需允许相应目标连接，使用代理也不保证通过站点验证。
 

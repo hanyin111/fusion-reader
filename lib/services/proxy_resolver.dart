@@ -74,6 +74,17 @@ String _address(String raw) {
   return '$host:${uri.port}';
 }
 
+/// User-entered proxies must include a port, and must not carry credentials.
+/// An empty string restores automatic system routing; null means invalid input.
+String? normalizeManualHttpProxy(String value) {
+  final raw = value.trim();
+  if (raw.isEmpty) return '';
+  final uri = Uri.tryParse(raw.contains('://') ? raw : 'http://$raw');
+  if (uri == null || !uri.hasPort) return null;
+  final address = _address(raw);
+  return address.isEmpty ? null : address;
+}
+
 bool _bypassed(Uri uri, Iterable<String> patterns) {
   final host = uri.host.toLowerCase();
   for (var pattern in patterns) {
@@ -105,6 +116,16 @@ class SystemProxyResolver {
   SystemProxySettings _settings = const SystemProxySettings();
   Future<void>? _refreshing;
   DateTime? _checked;
+  String _manualAddress = '';
+
+  String get manualAddress => _manualAddress;
+
+  void setManualAddress(String address) {
+    final normalized = normalizeManualHttpProxy(address);
+    if (normalized == null) throw const FormatException('请输入有效的 HTTP 代理地址和端口');
+    _manualAddress = normalized;
+    invalidate();
+  }
 
   SystemProxyResolver({
     Map<String, String>? environment,
@@ -168,6 +189,7 @@ class SystemProxyResolver {
   String addressFor([Uri? uri]) {
     final scheme = uri?.scheme ?? 'https';
     if (scheme != 'http' && scheme != 'https') return '';
+    if (_manualAddress.isNotEmpty) return _manualAddress;
     final keys = scheme == 'http'
         ? ['http_proxy', 'HTTP_PROXY', 'https_proxy', 'HTTPS_PROXY']
         : ['https_proxy', 'HTTPS_PROXY', 'http_proxy', 'HTTP_PROXY'];

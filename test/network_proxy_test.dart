@@ -82,6 +82,70 @@ HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settin
 
   String url(String path) => 'http://127.0.0.1:${origin.port}$path';
 
+  test(
+    'manual proxy works when a compatibility environment exposes no OS proxy',
+    () async {
+      final resolver = SystemProxyResolver(
+        environment: {'HTTPS_PROXY': 'http://127.0.0.1:1', 'NO_PROXY': '*'},
+        loadSettings: () async => const SystemProxySettings(bypass: ['*']),
+      )..setManualAddress('http://$proxyAddress');
+      Network.setProxyResolverForTesting(resolver);
+      expect(
+        (await Network.forPackage('fixture').get<String>(url('/manual'))).data,
+        'proxied',
+      );
+      expect(
+        resolver.findProxy(Uri.parse('https://external.invalid')),
+        'PROXY $proxyAddress',
+      );
+      expect(
+        (await Network.forPackage(
+          'fixture',
+          override: 'direct',
+        ).get<String>(url('/direct'))).data,
+        'direct',
+      );
+      resolver.setManualAddress('');
+      expect(
+        (await Network.forPackage(
+          'fixture',
+        ).get<String>(url('/automatic'))).data,
+        'direct',
+      );
+      expect(proxyRequests, hasLength(1));
+      expect(directRequests, hasLength(2));
+    },
+  );
+
+  test(
+    'manual proxy validation rejects unsupported and ambiguous endpoints',
+    () {
+      expect(
+        normalizeManualHttpProxy(' http://127.0.0.1:7890/ '),
+        '127.0.0.1:7890',
+      );
+      expect(normalizeManualHttpProxy('[::1]:7890'), '[::1]:7890');
+      expect(normalizeManualHttpProxy(''), '');
+      for (final address in [
+        'proxy.example',
+        'https://proxy.example:7890',
+        'socks5://127.0.0.1:7890',
+        'user:password@127.0.0.1:7890',
+        '127.0.0.1:0',
+        '127.0.0.1:65536',
+        '127.0.0.1:7890/path',
+        '127.0.0.1:7890?token=secret',
+      ]) {
+        expect(normalizeManualHttpProxy(address), isNull, reason: address);
+      }
+      final resolver = SystemProxyResolver(environment: {});
+      expect(
+        () => resolver.setManualAddress('socks5://127.0.0.1:7890'),
+        throwsFormatException,
+      );
+    },
+  );
+
   for (final system in ['android', 'ohos']) {
     test(
       '$system discovers the native VPN proxy before the first request',

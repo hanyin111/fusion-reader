@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -6,6 +7,7 @@ import 'package:media_kit/media_kit.dart';
 import 'pages/home.dart';
 import 'services/extension_manager.dart';
 import 'services/storage.dart';
+import 'services/network_proxy_settings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +18,9 @@ Future<void> main() async {
   });
   MediaKit.ensureInitialized();
   await Storage.init();
+  if (Platform.isAndroid || Platform.operatingSystem == 'ohos') {
+    NetworkProxySettings.initialize();
+  }
   // Extension load errors are collected per-extension; never blocks startup.
   await ExtensionManager.instance.init();
   runApp(const FusionApp());

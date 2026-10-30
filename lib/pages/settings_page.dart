@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -7,6 +8,7 @@ import 'account_page.dart';
 import 'app_update_page.dart';
 import 'cache_list_page.dart';
 import 'library_transfer_page.dart';
+import 'network_proxy_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -158,6 +160,20 @@ class _SettingsPageState extends State<SettingsPage> {
             },
           ),
           const SizedBox(height: 24),
+          if (Platform.isAndroid || Platform.operatingSystem == 'ohos') ...[
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.settings_ethernet),
+                title: const Text('网络代理'),
+                subtitle: const Text('系统代理不可用时，手动设置 HTTP 代理入口'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const NetworkProxyPage()),
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+          ],
           Text('关于', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           Card(

@@ -8,6 +8,8 @@ import 'package:fusion_reader/models/models.dart';
 import 'package:fusion_reader/services/library_backup.dart';
 import 'package:fusion_reader/services/account_service.dart';
 import 'package:fusion_reader/services/storage.dart';
+import 'package:fusion_reader/services/network_proxy_settings.dart';
+import 'package:fusion_reader/services/proxy_resolver.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
@@ -43,7 +45,33 @@ void main() {
     await Storage.localBox.clear();
     await Storage.settingsBox.clear();
   });
-  tearDown(() => debugDefaultTargetPlatformOverride = null);
+  tearDown(() {
+    debugDefaultTargetPlatformOverride = null;
+    systemProxyResolver.setManualAddress('');
+  });
+
+  test(
+    'manual proxy persists locally and is excluded from library transfer',
+    () async {
+      await NetworkProxySettings.save('http://proxy.example.test:7890');
+      expect(
+        Storage.setting(NetworkProxySettings.storageKey),
+        'proxy.example.test:7890',
+      );
+      systemProxyResolver.setManualAddress('');
+      NetworkProxySettings.initialize();
+      expect(NetworkProxySettings.address, 'proxy.example.test:7890');
+      final backup = LibraryBackup.capture();
+      expect(backup.encode(), isNot(contains('proxy.example.test')));
+      await backup.applySynchronized();
+      expect(
+        Storage.setting(NetworkProxySettings.storageKey),
+        'proxy.example.test:7890',
+      );
+      await NetworkProxySettings.save('');
+      expect(NetworkProxySettings.address, '');
+    },
+  );
 
   test(
     'same OS restores complete reader appearance; other OS and old backups leave it alone',
