@@ -25,7 +25,7 @@ env:
 jobs:
   ios:
     runs-on: macos-latest
-    timeout-minutes: 50
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,45 +65,47 @@ jobs:
           xcrun simctl boot "$DEVICE_ID"
           open -a Simulator --args -CurrentDeviceUDID "$DEVICE_ID"
           xcrun simctl bootstatus "$DEVICE_ID" -b
+      - name: Test simulator watchdog
+        run: python3 -m unittest discover -s test -p ios_integration_runner_test.py
       - name: Test danmaku parsing and playback timeline
-        run: flutter test --no-pub test/apple_http_adapter_test.dart test/network_proxy_test.dart test/cache_download_queue_test.dart test/manga_zoom_test.dart test/app_update_test.dart test/video_quality_test.dart test/video_quality_button_test.dart test/video_progress_test.dart test/extension_login_test.dart test/separate_media_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
+        run: flutter test --no-pub test/apple_http_adapter_test.dart test/network_proxy_test.dart test/cache_download_queue_test.dart test/manga_zoom_test.dart test/manga_chapters_test.dart test/manga_continuous_reader_test.dart test/app_update_test.dart test/video_quality_test.dart test/video_quality_button_test.dart test/video_progress_test.dart test/extension_login_test.dart test/separate_media_test.dart test/danmaku_test.dart test/danmaku_session_test.dart test/extension_grpc_test.dart
       - name: Test native URLSession transport and proxy bridge on iOS simulator
         # This is the first native build on a fresh runner. CocoaPods, Xcode,
         # installation and debugger attachment share this step's wall time.
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
           set -o pipefail
-          flutter test integration_test/system_proxy_test.dart -d "$DEVICE_ID" --no-pub --timeout 2m --reporter expanded 2>&1 | tee build/verification/ios-system-proxy-test.log
+          python3 scripts/run_ios_integration.py --device "$DEVICE_ID" --target integration_test/system_proxy_test.dart --log build/verification/ios-system-proxy-test.log
       - name: Test video danmaku on iOS simulator
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           set -o pipefail
-          flutter test integration_test/video_danmaku_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-video-danmaku-test.log
+          python3 scripts/run_ios_integration.py --device "$DEVICE_ID" --target integration_test/video_danmaku_test.dart --log build/verification/ios-video-danmaku-test.log
       - name: Test extension runtime on iOS simulator
         timeout-minutes: 25
         run: |
           set -o pipefail
-          flutter test integration_test/extension_runtime_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded --verbose 2>&1 | tee build/verification/ios-runtime-test.log
+          python3 scripts/run_ios_integration.py --device "$DEVICE_ID" --target integration_test/extension_runtime_test.dart --log build/verification/ios-runtime-test.log
       - name: Test history and bundled serif font on iOS simulator
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           set -o pipefail
-          flutter test integration_test/history_font_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-history-font-test.log
+          python3 scripts/run_ios_integration.py --device "$DEVICE_ID" --target integration_test/history_font_test.dart --log build/verification/ios-history-font-test.log
       - name: Test cache queue after leaving the directory on iOS simulator
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           set -o pipefail
-          flutter test integration_test/cache_queue_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-cache-queue-test.log
+          python3 scripts/run_ios_integration.py --device "$DEVICE_ID" --target integration_test/cache_queue_test.dart --log build/verification/ios-cache-queue-test.log
       - name: Test library import and export on iOS simulator
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           set -o pipefail
-          flutter test integration_test/library_transfer_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-library-transfer-test.log
+          python3 scripts/run_ios_integration.py --device "$DEVICE_ID" --target integration_test/library_transfer_test.dart --log build/verification/ios-library-transfer-test.log
       - name: Test native account token storage on iOS simulator
-        timeout-minutes: 10
+        timeout-minutes: 20
         run: |
           set -o pipefail
-          flutter test integration_test/account_storage_test.dart -d "$DEVICE_ID" --no-pub --timeout 3m --reporter expanded 2>&1 | tee build/verification/ios-account-storage-test.log
+          python3 scripts/run_ios_integration.py --device "$DEVICE_ID" --target integration_test/account_storage_test.dart --log build/verification/ios-account-storage-test.log
       - name: Capture simulator diagnostics
         if: failure()
         timeout-minutes: 2

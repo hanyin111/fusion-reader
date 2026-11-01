@@ -34,7 +34,8 @@ class SourceImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fallback = error ??
+    final fallback =
+        error ??
         Container(
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: const Center(child: Icon(Icons.broken_image_outlined)),
@@ -46,6 +47,10 @@ class SourceImage extends StatelessWidget {
       return Image.file(
         File(url),
         fit: fit,
+        frameBuilder: placeholder == null
+            ? null
+            : (context, child, frame, synchronous) =>
+                  synchronous || frame != null ? child : placeholder!,
         errorBuilder: (context, e, s) => fallback,
       );
     }
@@ -59,13 +64,15 @@ class SourceImage extends StatelessWidget {
       progressIndicatorBuilder: placeholder != null
           ? null
           : (c, u, p) => Center(
-                child: SizedBox(
-                  width: 32,
-                  height: 32,
-                  child:
-                      CircularProgressIndicator(value: p.progress, strokeWidth: 3),
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: CircularProgressIndicator(
+                  value: p.progress,
+                  strokeWidth: 3,
                 ),
               ),
+            ),
       errorWidget: (c, u, e) => fallback,
     );
   }

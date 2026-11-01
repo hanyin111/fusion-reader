@@ -75,12 +75,8 @@ void main() {
             () => Future<void>.delayed(const Duration(milliseconds: 10)),
           );
           await tester.pump();
-          if (find.byType(MangaZoomView).evaluate().isNotEmpty) {
-            await tester.pumpAndSettle();
-            return;
-          }
         }
-        fail('Local comic did not load');
+        expect(find.byType(MangaZoomView), findsOneWidget);
       }
 
       await tester.pumpWidget(
@@ -99,7 +95,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('150%'), findsOneWidget);
       await tester.tap(find.byTooltip('切换为条漫模式'));
-      await tester.pumpAndSettle();
+      await waitForLoad();
       expect(find.byType(ScrollablePositionedList), findsOneWidget);
       expect(find.text('100%'), findsOneWidget);
       await tester.tap(find.byTooltip('放大'));

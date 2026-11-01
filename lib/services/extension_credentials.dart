@@ -12,6 +12,7 @@ class ExtensionCredentials {
           storage ??
           const FlutterSecureStorage(
             aOptions: AndroidOptions(encryptedSharedPreferences: true),
+            mOptions: MacOsOptions(useDataProtectionKeyChain: false),
             iOptions: IOSOptions(
               accessibility: KeychainAccessibility.first_unlock_this_device,
             ),

@@ -56,7 +56,7 @@ jobs:
           }
       - run: flutter pub get
       - name: Test caching, Windows mouse input and updates
-        run: flutter test --no-pub test/cache_download_queue_test.dart test/manga_zoom_test.dart test/manga_reader_zoom_test.dart test/offline_catalog_test.dart test/app_update_test.dart test/video_quality_test.dart test/video_quality_button_test.dart test/video_progress_test.dart test/extension_login_test.dart test/separate_media_test.dart
+        run: flutter test --no-pub test/cache_download_queue_test.dart test/manga_zoom_test.dart test/manga_chapters_test.dart test/manga_continuous_reader_test.dart test/manga_reader_zoom_test.dart test/offline_catalog_test.dart test/app_update_test.dart test/video_quality_test.dart test/video_quality_button_test.dart test/video_progress_test.dart test/extension_login_test.dart test/separate_media_test.dart
       - name: Test Windows update rollback
         run: python -m unittest discover -s test -p windows_updater_test.py
       - name: Build tagged Windows app

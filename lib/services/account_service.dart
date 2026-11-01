@@ -26,6 +26,9 @@ class SecureAccountSessionStore implements AccountSessionStore {
            storage ??
            const FlutterSecureStorage(
              aOptions: AndroidOptions(encryptedSharedPreferences: true),
+             // The downloadable macOS build is ad-hoc signed, so use its
+             // private login keychain without restricted sharing entitlements.
+             mOptions: MacOsOptions(useDataProtectionKeyChain: false),
              iOptions: IOSOptions(
                accessibility: KeychainAccessibility.first_unlock_this_device,
              ),

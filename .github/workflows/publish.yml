@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   publish:
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.event.workflow_run.head_branch, 'v')
+    if: github.event_name == 'workflow_dispatch' || (startsWith(github.event.workflow_run.head_branch, 'v') && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

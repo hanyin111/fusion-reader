@@ -6,6 +6,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../models/models.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
+import '../services/manga_chapters.dart';
 import '../widgets/source_image.dart';
 import '../widgets/comments_button.dart';
 import '../widgets/manga_zoom_view.dart';
@@ -37,6 +38,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   int _page = 0;
   int _zoomPercent = 100;
   final _zoomKey = GlobalKey<MangaZoomViewState>();
+  MangaChapters? _chapters;
+  int _loadGeneration = 0;
+  int _initialStripPage = 0;
 
   PageController? _pageCtrl;
 
@@ -61,6 +65,8 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   @override
   void dispose() {
     _saveDebounce?.cancel();
+    _loadGeneration++;
+    _chapters?.dispose();
     _itemPositions.itemPositions.removeListener(_onScroll);
     // Persist wherever the reader stopped, without waiting for the debounce.
     // Only once the chapter actually loaded: backing out of a still-loading
@@ -71,45 +77,64 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
   }
 
   void _onScroll() {
+    final chapters = _chapters;
+    if (!_webtoon || _watch == null || chapters == null) return;
     final positions = _itemPositions.itemPositions.value;
-    if (positions.isEmpty) return;
+    final visible = positions.where(
+      (p) => p.itemTrailingEdge > 0 && p.itemLeadingEdge < 1,
+    );
+    if (visible.isEmpty) return;
     // The topmost item that is still at least partly on screen.
-    final first = positions
-        .where((p) => p.itemTrailingEdge > 0)
-        .fold<int?>(
-          null,
-          (min, p) => min == null || p.index < min ? p.index : min,
-        );
-    if (first != null && first != _page) {
-      setState(() => _page = first);
-      _scheduleSave(first);
+    final first = visible.fold<int?>(
+      null,
+      (min, p) => min == null || p.index < min ? p.index : min,
+    );
+    // The footer belongs to the end of the final image, not to a new chapter.
+    final location = chapters.locate(first!.clamp(0, chapters.pageCount - 1));
+    if (location != null &&
+        (location.chapter.index != _index || location.page != _page)) {
+      setState(() {
+        _index = location.chapter.index;
+        _watch = location.chapter.watch;
+        _page = location.page;
+      });
+      _scheduleSave(_page);
     }
+    chapters.prefetch(
+      visible.map((p) => p.index).reduce((a, b) => a > b ? a : b),
+    );
   }
 
   void _scheduleSave(int page) {
     _saveDebounce?.cancel();
+    final record = _record(page);
     _saveDebounce = Timer(
       const Duration(milliseconds: 600),
-      () => _persist(page),
+      () => Storage.saveHistory(record, item: widget.item),
     );
   }
 
+  HistoryRecord _record(int page) => HistoryRecord(
+    key: widget.item.key,
+    episodeUrl: _episode.url,
+    episodeName: _episode.name,
+    groupIndex: widget.groupIndex,
+    episodeIndex: _index,
+    timestamp: DateTime.now().millisecondsSinceEpoch,
+    position: page,
+  );
+
   void _persist(int page) {
-    Storage.saveHistory(
-      HistoryRecord(
-        key: widget.item.key,
-        episodeUrl: _episode.url,
-        episodeName: _episode.name,
-        groupIndex: widget.groupIndex,
-        episodeIndex: _index,
-        timestamp: DateTime.now().millisecondsSinceEpoch,
-        position: page,
-      ),
-      item: widget.item,
-    );
+    Storage.saveHistory(_record(page), item: widget.item);
   }
 
   Future<void> _load({bool restore = false}) async {
+    final generation = ++_loadGeneration;
+    final chapterIndex = _index;
+    final episode = _episode;
+    _saveDebounce?.cancel();
+    _chapters?.dispose();
+    _chapters = null;
     // Cached chapters can resolve before the loading frame is painted, reusing
     // the same zoom view. Reset its transform explicitly when changing chapters.
     _zoomKey.currentState?.reset();
@@ -131,9 +156,10 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     });
 
     try {
-      final raw = await Sources.watchCached(widget.item, _episode.url);
-      if (!mounted) return;
+      final raw = await Sources.watchCached(widget.item, episode.url);
+      if (!mounted || generation != _loadGeneration) return;
       final watch = MangaWatch.fromJson(raw);
+      if (watch.urls.isEmpty) throw StateError('本章没有可阅读的图片');
       final page = startPage.clamp(
         0,
         watch.urls.isEmpty ? 0 : watch.urls.length - 1,
@@ -141,6 +167,18 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       setState(() {
         _watch = watch;
         _page = page;
+        _initialStripPage = page;
+        _chapters = MangaChapters(
+          initialIndex: chapterIndex,
+          initialWatch: watch,
+          episodeCount: widget.group.urls.length,
+          load: (index) async => MangaWatch.fromJson(
+            await Sources.watchCached(
+              widget.item,
+              widget.group.urls[index].url,
+            ),
+          ),
+        )..addListener(_chaptersChanged);
         // Build the controller with the resume page baked in so paged mode
         // never renders page one first.
         _pageCtrl?.dispose();
@@ -148,15 +186,24 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
       });
       _persist(page);
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       setState(() => _error = e.toString());
     }
+  }
+
+  void _chaptersChanged() {
+    if (!mounted) return;
+    setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _onScroll();
+    });
   }
 
   void _go(int delta) {
     final next = _index + delta;
     if (next < 0 || next >= widget.group.urls.length) return;
     _saveDebounce?.cancel();
+    if (_watch != null) _persist(_page);
     setState(() => _index = next);
     _load();
   }
@@ -165,7 +212,9 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     _zoomKey.currentState?.reset();
     setState(() => _page = page);
     if (_webtoon) {
-      if (_itemCtrl.isAttached) _itemCtrl.jumpTo(index: page);
+      if (_itemCtrl.isAttached) {
+        _itemCtrl.jumpTo(index: _chapters!.globalPage(_index, page));
+      }
     } else {
       _pageCtrl?.jumpToPage(page);
     }
@@ -209,7 +258,7 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                         if (mounted) setState(() => _zoomPercent = percent);
                       },
                       builder: (canScroll) => _webtoon
-                          ? _buildWebtoon(watch, canScroll)
+                          ? _buildWebtoon(canScroll)
                           : _buildPaged(watch, canScroll),
                     ),
             ),
@@ -229,8 +278,15 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
         netMode: watch.netMode,
         headers: watch.headers,
         fit: fit,
-        error: const Center(
-          child: Icon(Icons.broken_image, color: Colors.white54),
+        placeholder: fit == BoxFit.fitWidth
+            ? const AspectRatio(
+                aspectRatio: 0.7,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : null,
+        error: const SizedBox(
+          height: 240,
+          child: Center(child: Icon(Icons.broken_image, color: Colors.white54)),
         ),
       ),
     );
@@ -250,20 +306,62 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
     );
   }
 
-  Widget _buildWebtoon(MangaWatch watch, bool canScroll) {
+  Widget _buildWebtoon(bool canScroll) {
+    final chapters = _chapters!;
     return ScrollablePositionedList.builder(
       physics: canScroll ? null : const NeverScrollableScrollPhysics(),
-      // Keyed per chapter so PageStorage cannot carry the previous chapter's
-      // scroll offset into this one.
-      key: ValueKey('webtoon|${_episode.url}'),
-      itemCount: watch.urls.length,
+      // Stable while appending and while the visible chapter changes. Only an
+      // explicit chapter jump creates a new strip and resets the scroll view.
+      key: ValueKey('webtoon|$_loadGeneration'),
+      itemCount: chapters.pageCount + 1,
       itemScrollController: _itemCtrl,
       itemPositionsListener: _itemPositions,
-      initialScrollIndex: _page,
-      itemBuilder: (context, i) =>
-          _image(watch.urls[i], watch, fit: BoxFit.fitWidth),
+      initialScrollIndex: _initialStripPage,
+      itemBuilder: (context, i) {
+        final location = chapters.locate(i);
+        if (location == null) return _buildStripFooter(chapters);
+        final chapter = location.chapter;
+        final image = _image(
+          chapter.watch.urls[location.page],
+          chapter.watch,
+          fit: BoxFit.fitWidth,
+        );
+        if (location.page != 0 || chapter.firstPage == 0) return image;
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+              child: Text(
+                widget.group.urls[chapter.index].name,
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ),
+            image,
+          ],
+        );
+      },
     );
   }
+
+  Widget _buildStripFooter(MangaChapters chapters) => MangaWheelRegion(
+    child: SizedBox(
+      height: 120,
+      child: Center(
+        child: chapters.loading
+            ? const CircularProgressIndicator()
+            : chapters.error != null
+            ? TextButton.icon(
+                onPressed: chapters.loadNext,
+                icon: const Icon(Icons.refresh),
+                label: const Text('下一章加载失败，点击重试'),
+              )
+            : Text(
+                chapters.hasNext ? '继续下滑，加载下一章' : '已读到最后一章',
+                style: const TextStyle(color: Colors.white70),
+              ),
+      ),
+    ),
+  );
 
   Widget _buildTopBar() {
     return Positioned(
@@ -305,13 +403,15 @@ class _MangaReaderPageState extends State<MangaReaderPage> {
                   final page = _page;
                   setState(() {
                     _webtoon = !_webtoon;
+                    _initialStripPage =
+                        _chapters?.globalPage(_index, page) ?? page;
                     _pageCtrl?.dispose();
                     _pageCtrl = PageController(initialPage: page);
                   });
                   Storage.setSetting('mangaWebtoon', _webtoon);
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (_webtoon && _itemCtrl.isAttached) {
-                      _itemCtrl.jumpTo(index: page);
+                    if (mounted && _webtoon && _itemCtrl.isAttached) {
+                      _itemCtrl.jumpTo(index: _initialStripPage);
                     }
                   });
                 },

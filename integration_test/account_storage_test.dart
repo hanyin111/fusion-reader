@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fusion_reader/services/account_api.dart';
 import 'package:fusion_reader/services/account_service.dart';
+import 'package:fusion_reader/services/extension_credentials.dart';
 import 'package:integration_test/integration_test.dart';
 
 void main() {
@@ -46,4 +47,25 @@ void main() {
       });
     },
   );
+  testWidgets('source credentials persist in native secure storage', (
+    tester,
+  ) async {
+    final package =
+        'native_storage_fixture_${DateTime.now().microsecondsSinceEpoch}';
+    final store = ExtensionCredentials();
+    await tester.runAsync(() async {
+      try {
+        expect(await store.read(package), isNull);
+        await store.write(package, 'fixture-credential');
+        expect(
+          await ExtensionCredentials().read(package),
+          'fixture-credential',
+        );
+        await store.clear(package);
+        expect(await store.read(package), isNull);
+      } finally {
+        await store.clear(package);
+      }
+    });
+  });
 }
