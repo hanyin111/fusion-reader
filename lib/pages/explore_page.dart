@@ -5,6 +5,7 @@ import '../services/extension_manager.dart';
 import '../services/extension_runtime.dart';
 import '../widgets/media_card.dart';
 import 'extension_repository_page.dart';
+import 'extension_login_page.dart';
 
 /// Browse & search across sources, one tab per category.
 class ExplorePage extends StatefulWidget {
@@ -69,6 +70,7 @@ class _ExploreTabState extends State<ExploreTab>
   List<MediaChannel> _channels = const [];
   String? _channelKey;
   ExtensionService? _observedService;
+  int? _observedLoginRevision;
   int _listGeneration = 0;
 
   @override
@@ -193,15 +195,17 @@ class _ExploreTabState extends State<ExploreTab>
                 ),
               ),
               icon: const Icon(Icons.extension_outlined),
-              label: const Text('打开插件仓库'),
+              label: const Text('打开插件平台'),
             ),
           ],
         ),
       );
     }
     final current = _current!;
-    if (!identical(_observedService, current)) {
+    if (!identical(_observedService, current) ||
+        _observedLoginRevision != current.loginRevision) {
       _observedService = current;
+      _observedLoginRevision = current.loginRevision;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _reset();
       });
@@ -302,6 +306,15 @@ class _ExploreTabState extends State<ExploreTab>
               ),
               const SizedBox(height: 12),
               FilledButton(onPressed: _reset, child: const Text('重试')),
+              if (_current?.meta.supportsQrLogin == true) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      openExtensionLogin(context, _current!.meta.package),
+                  icon: const Icon(Icons.account_circle_outlined),
+                  label: const Text('来源登录'),
+                ),
+              ],
             ],
           ),
         ),

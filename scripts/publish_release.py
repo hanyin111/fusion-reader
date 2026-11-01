@@ -43,8 +43,12 @@ def publish(repository, tag, version, *, include_linux=True):
     present = {asset['name'] for asset in release['assets'] if asset['size'] > 100_000}
     if not required <= present:
         raise ValueError('Required release packages are missing: ' + ', '.join(sorted(required - present)))
+    preview = release.get('prerelease') is True
     api(f'repos/{repository}/releases/{release["id"]}', 'PATCH',
-        {'draft': False, 'prerelease': False, 'make_latest': 'true'})
+        {'draft': False, 'prerelease': preview, 'make_latest': 'false' if preview else 'true'})
+    if preview:
+        print('Published test prerelease ' + tag + '; existing stable release remains unchanged.')
+        return
     print('Published stable release ' + tag)
     if not {f'FusionReader-{version}-windows-x64.zip', 'FusionReader-linux-x64.tar.gz'} <= present:
         print('Previous desktop release remains available until desktop packages are added.')

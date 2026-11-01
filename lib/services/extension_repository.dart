@@ -29,7 +29,7 @@ Uri repositoryUri(String value) {
       uri.host.isEmpty ||
       uri.userInfo.isNotEmpty ||
       uri.hasFragment) {
-    throw const FormatException('请填写 HTTPS 插件仓库索引地址。');
+    throw const FormatException('请填写 HTTPS 插件平台索引地址。');
   }
   return uri;
 }
@@ -52,11 +52,11 @@ class RepositoryExtension {
   });
 
   factory RepositoryExtension.parse(Object? value, Uri index) {
-    if (value is! Map) throw const FormatException('插件仓库条目格式不正确。');
+    if (value is! Map) throw const FormatException('插件平台条目格式不正确。');
     String text(String key) {
       final raw = value[key];
       if (raw is! String || raw.isEmpty || raw.length > 2048) {
-        throw const FormatException('插件仓库条目缺少有效字段。');
+        throw const FormatException('插件平台条目缺少有效字段。');
       }
       return raw;
     }
@@ -75,7 +75,7 @@ class RepositoryExtension {
         size is! int ||
         size <= 0 ||
         size > ExtensionRepository.maxScriptBytes) {
-      throw const FormatException('插件仓库条目校验失败。');
+      throw const FormatException('插件平台条目校验失败。');
     }
     final url = repositoryUri(index.resolve(text('url')).toString());
     return RepositoryExtension(
@@ -136,15 +136,15 @@ class ExtensionCatalog {
         value['schemaVersion'] != 1 ||
         value['name'] is! String ||
         value['extensions'] is! List) {
-      throw const FormatException('插件仓库格式或版本不支持。');
+      throw const FormatException('插件平台格式或版本不支持。');
     }
     final entries = value['extensions'] as List;
-    if (entries.length > 500) throw const FormatException('插件仓库条目过多。');
+    if (entries.length > 500) throw const FormatException('插件平台条目过多。');
     final parsed = entries
         .map((e) => RepositoryExtension.parse(e, index))
         .toList();
     if (parsed.map((e) => e.package).toSet().length != parsed.length) {
-      throw const FormatException('插件仓库包含重复的来源标识。');
+      throw const FormatException('插件平台包含重复的来源标识。');
     }
     return ExtensionCatalog(
       value['name'],
@@ -198,11 +198,11 @@ class ExtensionRepository {
         cancelToken: cancel,
       );
       final body = response.data;
-      if (body == null) throw const FormatException('插件仓库返回空内容。');
+      if (body == null) throw const FormatException('插件平台返回空内容。');
       final builder = BytesBuilder(copy: false);
       await for (final chunk in body.stream) {
         if (builder.length + chunk.length > limit) {
-          throw const FormatException('插件仓库或脚本超过大小限制。');
+          throw const FormatException('插件平台或脚本超过大小限制。');
         }
         builder.add(chunk);
       }

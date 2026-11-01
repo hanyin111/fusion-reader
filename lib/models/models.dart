@@ -53,6 +53,7 @@ class ExtensionMeta {
   final String icon;
   final bool nsfw;
   final CommentScope? commentScope;
+  final bool supportsQrLogin;
 
   /// Declared default network routing: 'auto' | 'direct' | 'proxy'.
   /// This is an internal compatibility default supplied by the extension.
@@ -69,6 +70,7 @@ class ExtensionMeta {
     this.icon = '',
     this.nsfw = false,
     this.commentScope,
+    this.supportsQrLogin = false,
     this.network = 'auto',
   });
 
@@ -94,6 +96,7 @@ class ExtensionMeta {
       icon: fields['icon'] ?? '',
       nsfw: (fields['nsfw'] ?? 'false') == 'true',
       commentScope: CommentScope.parse(fields['comments']),
+      supportsQrLogin: fields['login'] == 'qr',
       network: fields['network'] ?? 'auto',
     );
   }
@@ -373,26 +376,99 @@ class AnimeWatch {
   final String type; // 'hls' | 'mp4'
   final String url;
   final Map<String, String> headers;
+  final String? audioUrl;
 
   /// Optional per-result routing override ('direct' | 'proxy') for the player.
   final String? netMode;
   final DanmakuSource? danmaku;
+  final List<AnimeQuality> qualities;
 
   const AnimeWatch({
     required this.type,
     required this.url,
     this.headers = const {},
+    this.audioUrl,
     this.netMode,
     this.danmaku,
+    this.qualities = const [],
   });
 
   factory AnimeWatch.fromJson(Map json) => AnimeWatch(
-        type: (json['type'] ?? 'mp4').toString(),
-        url: (json['url'] ?? '').toString(),
-        headers: _headers(json),
-        netMode: json['netMode']?.toString(),
-        danmaku: DanmakuSource.fromJson(json['danmaku']),
-      );
+    type: (json['type'] ?? 'mp4').toString(),
+    url: (json['url'] ?? '').toString(),
+    headers: _headers(json),
+    audioUrl: _audioUrl(json),
+    netMode: json['netMode']?.toString(),
+    danmaku: DanmakuSource.fromJson(json['danmaku']),
+    qualities: [
+      if (json['qualities'] is List)
+        for (final entry in json['qualities'] as List)
+          if (entry is Map && AnimeQuality.validUrl(entry['url']))
+            AnimeQuality.fromJson(entry),
+    ],
+  );
+
+  AnimeWatch withQuality(AnimeQuality quality) => AnimeWatch(
+    type: quality.type ?? type,
+    url: quality.url,
+    headers: {
+      for (final entry in headers.entries)
+        if (!quality.headers.keys.any(
+          (key) => key.toLowerCase() == entry.key.toLowerCase(),
+        ))
+          entry.key: entry.value,
+      ...quality.headers,
+    },
+    netMode: quality.netMode ?? netMode,
+    danmaku: danmaku,
+    audioUrl: quality.audioUrl ?? (quality.url == url ? audioUrl : null),
+  );
+}
+
+/// Optional alternate encodings of the same episode, supplied by a source.
+class AnimeQuality {
+  final String label;
+  final String url;
+  final String? type;
+  final Map<String, String> headers;
+  final String? netMode;
+  final String? audioUrl;
+
+  const AnimeQuality({
+    required this.label,
+    required this.url,
+    this.type,
+    this.headers = const {},
+    this.netMode,
+    this.audioUrl,
+  });
+
+  static bool validUrl(dynamic value) {
+    final uri = Uri.tryParse(value?.toString() ?? '');
+    return uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host.isNotEmpty &&
+        uri.userInfo.isEmpty;
+  }
+
+  factory AnimeQuality.fromJson(Map json) => AnimeQuality(
+    label: (json['label'] ?? json['name'] ?? '原画').toString(),
+    url: json['url'].toString(),
+    type: json['type']?.toString(),
+    headers: _headers(json),
+    netMode: json['netMode']?.toString(),
+    audioUrl: _audioUrl(json),
+  );
+}
+
+String? _audioUrl(Map json) {
+  final raw = json['audioUrl'];
+  if (raw == null || raw == '') return null;
+  if (raw is! String || raw.length > 8192 ||
+      RegExp(r'[\r\n]').hasMatch(raw) || !AnimeQuality.validUrl(raw)) {
+    throw const FormatException('音轨地址格式不正确');
+  }
+  return raw;
 }
 
 Map<String, String> _headers(Map json) {

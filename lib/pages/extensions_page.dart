@@ -1,11 +1,13 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+
 import '../models/models.dart';
 import '../services/extension_manager.dart';
 import '../services/storage.dart';
 import '../widgets/media_card.dart';
 import 'extension_repository_page.dart';
+import 'extension_login_page.dart';
 
 class ExtensionsPage extends StatelessWidget {
   const ExtensionsPage({super.key});
@@ -25,7 +27,7 @@ class ExtensionsPage extends StatelessWidget {
         ),
         actions: [
           IconButton(
-            tooltip: '插件仓库',
+            tooltip: '插件平台',
             icon: const Icon(Icons.extension_outlined),
             onPressed: () => Navigator.push(
               context,
@@ -215,7 +217,7 @@ class ExtensionsPage extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '插件独立发布，填写仓库链接后可安装和更新；⚠ 表示插件加载失败。',
+                        '支持接入社区维护的插件平台，填写索引链接后可安装和更新；⚠ 表示插件加载失败。',
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       TextButton.icon(
@@ -226,7 +228,7 @@ class ExtensionsPage extends StatelessWidget {
                           ),
                         ),
                         icon: const Icon(Icons.extension_outlined),
-                        label: const Text('打开插件仓库'),
+                        label: const Text('打开插件平台'),
                       ),
                     ],
                   ),
@@ -312,6 +314,15 @@ class ExtensionsPage extends StatelessWidget {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (meta.supportsQrLogin)
+                      IconButton(
+                        tooltip: '来源登录',
+                        icon: const Icon(Icons.account_circle_outlined),
+                        onPressed:
+                            disabled || manager.isInstalling(meta.package)
+                            ? null
+                            : () => openExtensionLogin(context, meta.package),
+                      ),
                     if (Storage.extSettingSchemas(meta.package).isNotEmpty)
                       IconButton(
                         tooltip: '扩展设置（帐号等）',

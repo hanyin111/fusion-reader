@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+
 import '../models/models.dart';
 import '../services/extension_manager.dart';
 import '../services/extension_repository.dart';
@@ -39,7 +40,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
       message(
         error is FormatException
             ? error.message
-            : '${entry.name} 安装失败，原插件保留。请检查网络或刷新仓库。',
+            : '${entry.name} 安装失败，原插件保留。请检查网络或刷新平台。',
       );
     } finally {
       if (mounted) setState(() => pending.remove(entry.package));
@@ -56,7 +57,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
             : '部分插件未完成：${failures.keys.join('、')}，可以单独重试',
       );
     } catch (_) {
-      message('无法更新插件仓库，请检查网络后重试。');
+      message('无法更新插件平台，请检查网络后重试。');
     } finally {
       if (mounted) setState(() => updating = false);
     }
@@ -68,7 +69,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
     final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('插件仓库地址'),
+        title: const Text('插件平台索引地址'),
         content: Form(
           key: form,
           child: TextFormField(
@@ -80,7 +81,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
             maxLines: 3,
             onChanged: (value) => address = value,
             validator: (value) {
-              if (value == null || value.trim().isEmpty) return '请填写插件仓库链接';
+              if (value == null || value.trim().isEmpty) return '请填写插件平台链接';
               try {
                 repositoryUri(value);
                 return null;
@@ -88,7 +89,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
                 return error.message;
               }
             },
-            decoration: const InputDecoration(helperText: '填写仓库提供的 HTTPS 索引链接'),
+            decoration: const InputDecoration(helperText: '填写社区平台提供的 HTTPS 索引链接'),
           ),
         ),
         actions: [
@@ -110,7 +111,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
     if (value == null || !mounted) return;
     try {
       await manager.setRepository(value);
-      message('插件仓库已更新');
+      message('插件平台已更新');
     } catch (_) {
       message('无法保存仓库，请检查链接和网络后重试。');
     }
@@ -132,17 +133,17 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
       final busy = updating || pending.isNotEmpty;
       return Scaffold(
         appBar: AppBar(
-          title: const Text('插件仓库'),
+          title: const Text('插件平台'),
           actions: [
             IconButton(
-              tooltip: '仓库地址',
+              tooltip: '平台地址',
               onPressed: busy || manager.checkingRepository
                   ? null
                   : editRepository,
               icon: const Icon(Icons.link),
             ),
             IconButton(
-              tooltip: '刷新仓库',
+              tooltip: '刷新平台',
               onPressed:
                   !manager.hasRepository || manager.checkingRepository || busy
                   ? null
@@ -160,10 +161,10 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
                     children: [
                       const Icon(Icons.extension_outlined, size: 48),
                       const SizedBox(height: 16),
-                      const Text('先添加插件仓库', style: TextStyle(fontSize: 20)),
+                      const Text('先添加插件平台', style: TextStyle(fontSize: 20)),
                       const SizedBox(height: 8),
                       const Text(
-                        '手动填写仓库链接后，即可浏览、安装和更新插件。已安装的插件可以继续使用。',
+                        '支持接入社区维护的插件平台。手动填写平台索引链接后，即可浏览、安装和更新插件；已安装的插件可以继续使用。',
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 20),
@@ -173,7 +174,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
                         FilledButton.icon(
                           onPressed: editRepository,
                           icon: const Icon(Icons.link),
-                          label: const Text('填写仓库链接'),
+                          label: const Text('填写平台链接'),
                         ),
                     ],
                   ),
@@ -188,7 +189,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('插件独立发布，更新不需要重新安装应用。下载后保存在本机，离线仍可使用。'),
+                        const Text('社区维护的插件平台，独立发布和更新。下载后保存在本机，离线仍可使用。'),
                         const SizedBox(height: 8),
                         Text(
                           manager.repositoryUrl,
@@ -259,7 +260,7 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
                             child: Text(
                               manager.checkingRepository
                                   ? '正在读取插件目录…'
-                                  : '暂无插件，请刷新仓库或调整筛选。',
+                                  : '暂无插件，请刷新平台或调整筛选。',
                             ),
                           )
                         : ListView.builder(

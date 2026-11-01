@@ -255,6 +255,15 @@ class Extension {
     return __bridgeCall('setSetting', { package: this.package, key, value });
   }
 
+  // Device-local protected credential, scoped by the host to this runtime.
+  async getCredential() { return __bridgeCall('getCredential', {}); }
+  async setCredential(value) { return __bridgeCall('setCredential', { value }); }
+  async loginStatus() { return { loggedIn: false }; }
+  async beginLogin() { throw new Error('此来源不支持扫码登录'); }
+  async pollLogin() { throw new Error('此来源不支持扫码登录'); }
+  async cancelLogin() {}
+  async logout() { await this.cancelLogin(); await this.setCredential(null); }
+
   // Lifecycle + API surface; extensions override what they support.
   async load() {}
 

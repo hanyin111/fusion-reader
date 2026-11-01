@@ -13,6 +13,7 @@ import 'network.dart';
 import 'image_loader.dart';
 import 'source_image_codec.dart';
 import 'sources.dart';
+import 'separate_media.dart';
 
 /// Progress of one in-flight download.
 class DownloadProgress {
@@ -369,6 +370,41 @@ class OfflineCache extends ChangeNotifier {
   ) async {
     final watch = AnimeWatch.fromJson(raw);
     if (watch.url.isEmpty) throw Exception('没有取到播放地址');
+
+    if (watch.audioUrl != null) {
+      final video = '${dir.path}${Platform.pathSeparator}video.mp4';
+      final audio = '${dir.path}${Platform.pathSeparator}audio.m4a';
+      var bytes = 0;
+      for (final part in [
+        (watch.url, video, '视频'),
+        (watch.audioUrl!, audio, '音轨'),
+      ]) {
+        bytes += await _fetchToFile(
+          item.package,
+          part.$1,
+          part.$2,
+          headers: watch.headers,
+          netMode: watch.netMode,
+          cancelToken: cancelToken,
+          onBytes: (received, total) {
+            _active[key] = DownloadProgress(
+              received ~/ 1024,
+              (total <= 0 ? received : total) ~/ 1024,
+              part.$3,
+            );
+            notifyListeners();
+          },
+        );
+      }
+      final playlist = '${dir.path}${Platform.pathSeparator}index.edl';
+      await File(playlist).writeAsString(
+        separateMediaPlaylist(
+          video.replaceAll('\\', '/'),
+          audio.replaceAll('\\', '/'),
+        ),
+      );
+      return ({'type': 'mp4', 'url': playlist, '__probe': playlist}, bytes);
+    }
 
     final isHls = watch.type == 'hls' || watch.url.contains('.m3u8');
     if (!isHls) {

@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../models/models.dart';
 import 'extension_runtime.dart';
+import 'extension_credentials.dart';
 import 'extension_repository.dart';
 import 'network.dart';
 import 'storage.dart';
@@ -215,7 +216,7 @@ class ExtensionManager extends ChangeNotifier {
     } catch (error) {
       repositoryError = error is FormatException
           ? error.message
-          : '无法连接插件仓库，请检查网络或稍后重试。';
+          : '无法连接插件平台，请检查网络或稍后重试。';
     } finally {
       checkingRepository = false;
       notifyListeners();
@@ -227,7 +228,7 @@ class ExtensionManager extends ChangeNotifier {
     if (checkingRepository ||
         _installing.isNotEmpty ||
         _downloading.isNotEmpty) {
-      throw StateError('插件仓库正在更新，请稍后重试。');
+      throw StateError('插件平台正在更新，请稍后重试。');
     }
     checkingRepository = true;
     notifyListeners();
@@ -270,7 +271,7 @@ class ExtensionManager extends ChangeNotifier {
   Future<Map<String, String>> updateInstalled({
     bool restoreLegacy = false,
   }) async {
-    if (!hasRepository) throw const FormatException('请先填写插件仓库链接。');
+    if (!hasRepository) throw const FormatException('请先填写插件平台链接。');
     await refreshRepository();
     if (repositoryError != null) throw Exception(repositoryError);
     final failures = <String, String>{};
@@ -291,6 +292,11 @@ class ExtensionManager extends ChangeNotifier {
 
   Future<void> uninstall(String package) async {
     if (isInstalling(package)) throw Exception('该插件正在更新，请稍后再试。');
+    final service = _services[package];
+    if (service?.meta.supportsQrLogin == true) {
+      service!.dispose();
+      await ExtensionCredentials.instance.clear(package);
+    }
     await Storage.uninstallScript(package);
     _services[package]?.dispose();
     _services.remove(package);

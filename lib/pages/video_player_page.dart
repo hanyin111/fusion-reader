@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../models/models.dart';
 import '../services/danmaku_service.dart';
@@ -13,7 +14,10 @@ import '../services/danmaku_session.dart';
 import '../services/player_config.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
+import '../services/video_progress.dart';
+import '../services/video_quality.dart';
 import '../widgets/danmaku_overlay.dart';
+import '../widgets/video_quality_button.dart';
 import 'comments_page.dart';
 
 class VideoPlayerPage extends StatefulWidget {
@@ -34,17 +38,26 @@ class VideoPlayerPage extends StatefulWidget {
   State<VideoPlayerPage> createState() => _VideoPlayerPageState();
 }
 
-class _VideoPlayerPageState extends State<VideoPlayerPage> {
+class _VideoPlayerPageState extends State<VideoPlayerPage>
+    with WidgetsBindingObserver {
   late int _index = widget.index;
   late final Player _player = Player();
   late final VideoController _controller = VideoController(_player);
   String? _error;
   bool _loading = true;
   int _generation = 0;
+  final _quality = ValueNotifier(const VideoQualitySelection());
+  late final Future<Directory> _playlistDirectory = getTemporaryDirectory()
+      .then((root) => root.createTemp('fusion_player_'));
   CancelToken? _danmakuRequest;
   DanmakuSource? _danmakuSource;
   DanmakuSession? _danmakuSession;
   StreamSubscription<Duration>? _danmakuPosition;
+  StreamSubscription<bool>? _playing;
+  StreamSubscription<bool>? _completed;
+  VideoProgressSession? _progress;
+  Duration _resumeTarget = Duration.zero;
+  bool _switchingMedia = false;
   late final ValueNotifier<DanmakuDisplay> _danmaku = ValueNotifier(
     DanmakuDisplay(
       enabled: Storage.setting('danmakuEnabled', defaultValue: true) == true,
@@ -69,29 +82,96 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _danmakuPosition = _player.stream.position.listen((position) {
       if (_danmaku.value.enabled) {
         unawaited(_danmakuSession?.update(position.inMilliseconds / 1000));
+      }
+      _recordPosition(position);
+    });
+    _playing = _player.stream.playing.listen((playing) {
+      if (!playing && !_loading && !_switchingMedia) _saveProgress();
+    });
+    _completed = _player.stream.completed.listen((completed) {
+      if (completed && !_loading && !_switchingMedia) {
+        _resumeTarget = Duration.zero;
+        _progress?.update(Duration.zero);
+        _saveProgress();
       }
     });
     _load();
   }
 
+  void _recordPosition(Duration position) {
+    if (_loading || _switchingMedia || _progress == null) return;
+    final duration = _player.state.duration;
+    if (_player.state.completed &&
+        position >= duration - const Duration(seconds: 1)) {
+      return;
+    }
+    if (_resumeTarget > Duration.zero) {
+      // Ignore the loading/reset event until the requested timestamp arrives.
+      if (position == Duration.zero ||
+          position < _resumeTarget - const Duration(seconds: 1)) {
+        return;
+      }
+      _resumeTarget = Duration.zero;
+    }
+    _progress!.update(position);
+    unawaited(
+      _progress!.save(force: !_player.state.playing).catchError((Object _) {}),
+    );
+  }
+
+  void _saveProgress() {
+    unawaited(_progress?.save(force: true).catchError((Object _) {}));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _saveProgress();
+  }
+
   @override
   void dispose() {
     _generation++;
+    WidgetsBinding.instance.removeObserver(this);
+    final progress = _progress;
+    _progress = null;
     _danmakuRequest?.cancel();
     _danmakuSession?.dispose();
     _danmakuPosition?.cancel();
+    _playing?.cancel();
+    _completed?.cancel();
     _danmaku.dispose();
-    _player.dispose();
+    _quality.dispose();
+    unawaited(_disposePlayer(progress));
     super.dispose();
+  }
+
+  Future<void> _disposePlayer(VideoProgressSession? progress) async {
+    try {
+      try {
+        await progress?.save(force: true);
+      } catch (_) {}
+      await _player.dispose();
+    } finally {
+      try {
+        final directory = await _playlistDirectory;
+        await directory.delete(recursive: true);
+      } catch (_) {
+        // A locked temporary playlist can be reclaimed by the OS later.
+      }
+    }
   }
 
   Future<void> _load() async {
     final generation = ++_generation;
     final index = _index;
     final episode = widget.group.urls[index];
+    final previousProgress = _progress;
+    _progress = null;
+    _quality.value = const VideoQualitySelection(busy: true);
     _danmakuRequest?.cancel();
     _danmakuSession?.dispose();
     _danmakuSession = null;
@@ -102,40 +182,135 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
       _error = null;
     });
     try {
+      await previousProgress?.save(force: true);
       final raw = await Sources.watchCached(widget.item, episode.url);
       final watch = AnimeWatch.fromJson(raw);
       if (!mounted || generation != _generation) return;
 
-      final media = await buildMedia(widget.item.package, watch);
+      final options = await resolveVideoQualities(widget.item.package, watch);
       if (!mounted || generation != _generation) return;
-      await configurePlayerFor(_player, widget.item.package, watch);
+      if (options.isEmpty) throw const FormatException('没有可用的播放地址');
+      final media = await buildMedia(
+        widget.item.package,
+        watch,
+        quality: options.first,
+        playlistDirectory: await _playlistDirectory,
+      );
       if (!mounted || generation != _generation) return;
-      await _player.open(media);
+      await _player.stop();
+      await configurePlayerFor(
+        _player,
+        widget.item.package,
+        options.first.watch,
+      );
+      if (!mounted || generation != _generation) return;
+      _quality.value = VideoQualitySelection(options: options);
+      final resume = videoResumePosition(
+        Storage.historyOf(widget.item.key),
+        episode.url,
+      );
+      _resumeTarget = resume;
+      _progress = VideoProgressSession(
+        record: HistoryRecord(
+          key: widget.item.key,
+          item: widget.item,
+          episodeUrl: episode.url,
+          episodeName: episode.name,
+          groupIndex: widget.groupIndex,
+          episodeIndex: index,
+          position: resume.inMilliseconds,
+          timestamp: DateTime.now().millisecondsSinceEpoch,
+        ),
+        write: (record) => Storage.saveHistory(record, item: widget.item),
+      );
+      await _player.open(
+        Media(media.uri, httpHeaders: media.httpHeaders, start: resume),
+      );
       // open() resets the rate, so re-apply the chosen speed each episode.
       await _player.setRate(_rate);
       if (!mounted || generation != _generation) return;
       _danmakuSource = watch.danmaku;
       if (watch.danmaku != null) unawaited(_loadDanmaku(generation));
-      await Storage.saveHistory(
-        HistoryRecord(
-          key: widget.item.key,
-          episodeUrl: episode.url,
-          episodeName: episode.name,
-          groupIndex: widget.groupIndex,
-          episodeIndex: index,
-          timestamp: DateTime.now().millisecondsSinceEpoch,
-        ),
-        item: widget.item,
-      );
+      await _progress!.save(force: true);
       if (mounted && generation == _generation) {
         setState(() => _loading = false);
+        if (_player.state.completed) {
+          _progress?.update(Duration.zero);
+          _saveProgress();
+        }
       }
     } catch (e) {
       if (!mounted || generation != _generation) return;
+      _quality.value = const VideoQualitySelection();
       setState(() {
         _loading = false;
         _error = e.toString();
       });
+    }
+  }
+
+  Widget _qualityButton() {
+    final generation = _generation;
+    return VideoQualityButton(
+      selection: _quality,
+      color: Colors.white,
+      onSelected: (quality) {
+        if (mounted && generation == _generation) {
+          unawaited(_changeQuality(quality, generation));
+        }
+      },
+    );
+  }
+
+  Future<void> _changeQuality(VideoQuality quality, int generation) async {
+    final previous = _quality.value;
+    final index = previous.options.indexOf(quality);
+    if (_loading || previous.busy || index < 0 || index == previous.selected) {
+      return;
+    }
+    _quality.value = VideoQualitySelection(
+      options: previous.options,
+      selected: previous.selected,
+      busy: true,
+    );
+    try {
+      // Prepare while the old encoding still plays. No episode reload means
+      // imported/online danmaku and its display settings stay in place.
+      final media = await buildMedia(
+        widget.item.package,
+        quality.watch,
+        quality: quality,
+        playlistDirectory: await _playlistDirectory,
+        fallback: false,
+      );
+      if (!mounted || generation != _generation) return;
+      _resumeTarget = _player.state.completed
+          ? Duration.zero
+          : _player.state.position;
+      _progress?.update(_resumeTarget);
+      _saveProgress();
+      _switchingMedia = true;
+      try {
+        await replaceVideoMedia(
+          _player,
+          media,
+          configure: () =>
+              configurePlayerFor(_player, widget.item.package, quality.watch),
+        );
+      } finally {
+        _switchingMedia = false;
+      }
+      if (!mounted || generation != _generation) return;
+      _quality.value = VideoQualitySelection(
+        options: previous.options,
+        selected: index,
+      );
+    } catch (_) {
+      if (!mounted || generation != _generation) return;
+      _quality.value = previous;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('清晰度切换失败，请稍后重试或选择其他清晰度')));
     }
   }
 
@@ -392,6 +567,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   List<Widget> _playerButtons(VideoState state) => [
     const Spacer(),
+    _qualityButton(),
     _rateButton(color: Colors.white),
     if (Sources.commentScope(widget.item) != null)
       _commentsButton(state.context, color: Colors.white),
@@ -487,7 +663,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
   }
 
   void _go(int delta) {
-    if (_loading) return;
+    if (_loading || _quality.value.busy) return;
     final next = _index + delta;
     if (next < 0 || next >= widget.group.urls.length) return;
     setState(() => _index = next);
@@ -513,6 +689,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
             onPressed: () => _danmakuSettings(context),
           ),
           _rateButton(color: Colors.white),
+          _qualityButton(),
           if (Sources.commentScope(widget.item) != null)
             _commentsButton(context),
           IconButton(

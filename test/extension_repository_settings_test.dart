@@ -146,9 +146,9 @@ void main() {
         MaterialApp(home: ExtensionRepositoryPage(manager: manager)),
       );
       await tester.pumpAndSettle();
-      expect(find.text('先添加插件仓库'), findsOneWidget);
+      expect(find.text('先添加插件平台'), findsOneWidget);
       expect(factories, isEmpty);
-      await tester.tap(find.text('填写仓库链接'));
+      await tester.tap(find.text('填写平台链接'));
       await tester.pumpAndSettle();
       expect(find.text('使用默认仓库'), findsNothing);
       expect(
@@ -157,7 +157,7 @@ void main() {
       );
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
-      expect(find.text('请填写插件仓库链接'), findsOneWidget);
+      expect(find.text('请填写插件平台链接'), findsOneWidget);
       expect(factories, isEmpty);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();

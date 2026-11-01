@@ -36,6 +36,13 @@ class PublishReleaseTests(unittest.TestCase):
         self.assertEqual(older['assets'], [{'name': 'old.apk'}])
         self.assertEqual(len(mutations), 2)
 
+    def test_prerelease_remains_preview_and_never_archives_stable_releases(self):
+        release = dict(self.release, prerelease=True)
+        with patch.object(publisher, 'api', side_effect=[[release], {}]) as api:
+            publisher.publish('owner/app', 'v1.4.0', '1.4.0')
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual(api.call_args.args[2], {'draft': False, 'prerelease': True, 'make_latest': 'false'})
+
     def test_wrong_tag_never_changes_releases(self):
         with patch.object(publisher, 'api') as api:
             with self.assertRaises(ValueError):

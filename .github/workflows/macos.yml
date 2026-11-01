@@ -8,7 +8,7 @@ on:
         required: true
         default: '750f48080fa898224a14058386301a88caa2db4d'
       release_tag:
-        description: 'Existing draft release for the verified package'
+        description: 'Existing draft or prerelease for the verified package'
         required: true
         default: 'v1.3.8'
 
@@ -37,6 +37,8 @@ jobs:
           xcodebuild -version
           flutter --version
           flutter pub get
+      - name: Test source login and separate audio
+        run: flutter test --no-pub test/extension_login_test.dart test/separate_media_test.dart
       - name: Test Apple runtime with AOT compilation and launch diagnostics
         id: runtime
         continue-on-error: true
@@ -114,15 +116,16 @@ jobs:
         with:
           name: macos
           path: FusionReader-macos.zip
-      - name: Attach verified package to existing draft release
+      - name: Attach verified package to existing test release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
           IS_DRAFT=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)
-          if [ "$IS_DRAFT" != 'true' ]; then
-            echo '::error::This workflow attaches only to an existing draft release.'
+          IS_PREVIEW=$(gh release view "$RELEASE_TAG" --json isPrerelease --jq .isPrerelease)
+          if [ "$IS_DRAFT" != 'true' ] && [ "$IS_PREVIEW" != 'true' ]; then
+            echo '::error::This workflow attaches only to an existing draft or prerelease.'
             exit 1
           fi
           gh release upload "$RELEASE_TAG" FusionReader-macos.zip --clobber

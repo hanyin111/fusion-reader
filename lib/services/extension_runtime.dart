@@ -10,6 +10,8 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:xpath_selector_html_parser/xpath_selector_html_parser.dart';
 
 import '../models/models.dart';
+import '../models/extension_login.dart';
+import 'extension_credentials.dart';
 import 'apple_js_runtime.dart';
 import 'browser_loader.dart';
 import 'extension_result.dart';
@@ -21,7 +23,7 @@ import 'storage.dart';
 export 'extension_result.dart' show ExtensionException;
 
 /// One loaded extension: its own JS runtime plus the Dart bridge.
-class ExtensionService {
+class ExtensionService implements ExtensionLoginClient {
   final ExtensionMeta meta;
   final String script;
   final String prelude;
@@ -30,9 +32,15 @@ class ExtensionService {
   Future<void>? _initializing;
   bool _ready = false;
   int _generation = 0;
+  int _loginRevision = 0;
   bool get loaded => _ready;
+  int get loginRevision => _loginRevision;
 
-  ExtensionService({required this.meta, required this.script, required this.prelude});
+  ExtensionService({
+    required this.meta,
+    required this.script,
+    required this.prelude,
+  });
 
   Future<void> init() async {
     if (_ready) return;
@@ -68,12 +76,18 @@ class ExtensionService {
     _rt = rt;
 
     rt.onMessage('console', (dynamic args) {
-      debugPrint('[ext:${meta.package}] ${args['level']}: ${(args['args'] as List).join(' ')}');
+      debugPrint(
+        '[ext:${meta.package}] ${args['level']}: ${(args['args'] as List).join(' ')}',
+      );
       return null;
     });
 
     _channel(rt, 'request', _handleRequest);
-    _channel(rt, 'grpcRequest', (payload) => ExtensionGrpc.request(payload as Map));
+    _channel(
+      rt,
+      'grpcRequest',
+      (payload) => ExtensionGrpc.request(payload as Map),
+    );
     _channel(rt, 'querySelector', _handleQuerySelector);
     _channel(rt, 'querySelectorAll', _handleQuerySelectorAll);
     _channel(rt, 'getAttributeText', _handleGetAttributeText);
@@ -86,10 +100,25 @@ class ExtensionService {
     _channel(rt, 'registerSetting', _handleRegisterSetting);
     _channel(rt, 'getSetting', _handleGetSetting);
     _channel(rt, 'setSetting', _handleSetSetting);
+    _channel(
+      rt,
+      'getCredential',
+      (_) => ExtensionCredentials.instance.read(meta.package),
+    );
+    _channel(rt, 'setCredential', (payload) {
+      final value = (payload as Map)['value'];
+      if (value != null && value is! String) {
+        throw const FormatException('来源登录信息格式不正确');
+      }
+      return ExtensionCredentials.instance.write(meta.package, value);
+    });
 
     final preludeResult = rt.evaluate(prelude);
     if (preludeResult.isError) {
-      throw ExtensionException(meta.package, 'runtime prelude failed: ${preludeResult.stringResult}');
+      throw ExtensionException(
+        meta.package,
+        'runtime prelude failed: ${preludeResult.stringResult}',
+      );
     }
 
     // Strip ES module syntax so the script can run as a plain QuickJS script.
@@ -99,7 +128,10 @@ class ExtensionService {
     );
     final evalResult = rt.evaluate(src);
     if (evalResult.isError) {
-      throw ExtensionException(meta.package, 'script eval failed: ${evalResult.stringResult}');
+      throw ExtensionException(
+        meta.package,
+        'script eval failed: ${evalResult.stringResult}',
+      );
     }
 
     final instResult = rt.evaluate('''
@@ -110,7 +142,10 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
 'ok'
 ''');
     if (instResult.isError) {
-      throw ExtensionException(meta.package, 'instantiation failed: ${instResult.stringResult}');
+      throw ExtensionException(
+        meta.package,
+        'instantiation failed: ${instResult.stringResult}',
+      );
     }
 
     await _call('load', []);
@@ -128,6 +163,30 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
 
   // ---------- public API ----------
 
+  @override
+  Future<ExtensionLoginStatus> loginStatus() async =>
+      ExtensionLoginStatus.fromJson(await _call('loginStatus', []));
+  @override
+  Future<ExtensionLoginChallenge> beginLogin() async =>
+      ExtensionLoginChallenge.fromJson(await _call('beginLogin', []));
+  @override
+  Future<ExtensionLoginPoll> pollLogin() async {
+    final result = ExtensionLoginPoll.fromJson(await _call('pollLogin', []));
+    if (result.phase == ExtensionLoginPhase.success) _loginRevision++;
+    return result;
+  }
+
+  @override
+  Future<void> cancelLogin() async {
+    await _call('cancelLogin', []);
+  }
+
+  @override
+  Future<void> logout() async {
+    await _call('logout', []);
+    _loginRevision++;
+  }
+
   Future<List<MediaItem>> latest(int page, {String? channel}) async {
     final res = await _call('latest', [page, channel]);
     return _toItems(res);
@@ -140,10 +199,12 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
       if (res is! List) return const [];
       return res
           .whereType<Map>()
-          .map((m) => MediaChannel(
-                title: (m['title'] ?? '').toString(),
-                key: (m['key'] ?? '').toString(),
-              ))
+          .map(
+            (m) => MediaChannel(
+              title: (m['title'] ?? '').toString(),
+              key: (m['key'] ?? '').toString(),
+            ),
+          )
           .where((c) => c.title.isNotEmpty)
           .toList();
     } catch (e) {
@@ -159,8 +220,16 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
   }
 
   Future<MediaDetail> detail(String url, {String? title}) async {
-    final res = await _call('detail', [url, {'title': title}]);
-    if (res is! Map) throw ExtensionException(meta.package, 'detail() returned ${res.runtimeType}');
+    final res = await _call('detail', [
+      url,
+      {'title': title},
+    ]);
+    if (res is! Map) {
+      throw ExtensionException(
+        meta.package,
+        'detail() returned ${res.runtimeType}',
+      );
+    }
     return MediaDetail.fromJson(res);
   }
 
@@ -168,8 +237,12 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     return _toItems(await _call('searchAuthor', [author.toJson(), page]));
   }
 
-  Future<CommentPage> comments(String workUrl, String chapterUrl, int page,
-      {String? parentId}) async {
+  Future<CommentPage> comments(
+    String workUrl,
+    String chapterUrl,
+    int page, {
+    String? parentId,
+  }) async {
     final res = await _call('comments', [workUrl, chapterUrl, page, parentId]);
     if (res is! Map || res['comments'] is! List) {
       throw ExtensionException(meta.package, '评论返回格式不正确，请稍后重试');
@@ -179,12 +252,24 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
 
   /// Raw watch result — callers pick the typed wrapper based on [meta.type].
   Future<Map> watch(String url, {String? title}) async {
-    final res = await _call('watch', [url, {'title': title}]);
-    if (res is! Map) throw ExtensionException(meta.package, 'watch() returned ${res.runtimeType}');
+    final res = await _call('watch', [
+      url,
+      {'title': title},
+    ]);
+    if (res is! Map) {
+      throw ExtensionException(
+        meta.package,
+        'watch() returned ${res.runtimeType}',
+      );
+    }
     return res;
   }
 
-  Future<List<DanmakuComment>> danmaku(String url, double from, double to) async {
+  Future<List<DanmakuComment>> danmaku(
+    String url,
+    double from,
+    double to,
+  ) async {
     final res = await _call('danmaku', [url, from, to]);
     return parseDanmaku(res, 'dplayer');
   }
@@ -202,8 +287,11 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
 
   Future<dynamic> _call(String method, List<dynamic> args) async {
     final rt = _rt;
-    if (rt == null) throw ExtensionException(meta.package, 'runtime not initialized');
-    final expr = '__invoke(${jsonEncode(method)}, ${jsonEncode(jsonEncode(args))})';
+    if (rt == null) {
+      throw ExtensionException(meta.package, 'runtime not initialized');
+    }
+    final expr =
+        '__invoke(${jsonEncode(method)}, ${jsonEncode(jsonEncode(args))})';
     // Browser-rendered chapters may have many sequential sub-pages.
     final timeout = meta.package == 'linovelib' && method == 'watch'
         ? const Duration(minutes: 5)
@@ -221,17 +309,21 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
       final settled = await rt.handlePromise(promise, timeout: timeout);
       raw = settled.stringResult;
     }
-    return decodeExtensionResult(raw,
-        package: meta.package, method: method);
+    return decodeExtensionResult(raw, package: meta.package, method: method);
   }
 
   // ---------- bridge plumbing ----------
 
-  void _channel(JavascriptRuntime rt, String name, Future<dynamic> Function(dynamic payload) handler) {
+  void _channel(
+    JavascriptRuntime rt,
+    String name,
+    Future<dynamic> Function(dynamic payload) handler,
+  ) {
     rt.onMessage(name, (dynamic args) {
       final id = args['id'];
       final payload = args['payload'];
       Future(() async {
+        if (!identical(rt, _rt)) return;
         bool ok;
         dynamic data;
         try {
@@ -266,7 +358,9 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     final options = payload['options'] as Map? ?? {};
     final method = (options['method'] ?? 'get').toString().toUpperCase();
     final headers = <String, String>{};
-    (options['headers'] as Map? ?? {}).forEach((k, v) => headers[k.toString()] = v.toString());
+    (options['headers'] as Map? ?? {}).forEach(
+      (k, v) => headers[k.toString()] = v.toString(),
+    );
     headers.putIfAbsent('User-Agent', () => kDefaultUserAgent);
 
     final override = options['netMode']?.toString();
@@ -280,7 +374,12 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
         headers: headers,
         selector: (options['browserSelector'] ?? '#acontent').toString(),
         rejectPattern: (options['browserRejectPattern'] ?? '').toString(),
-        proxy: Network.usesProxyFor(meta.package, override: override, uri: Uri.parse(url))
+        proxy:
+            Network.usesProxyFor(
+              meta.package,
+              override: override,
+              uri: Uri.parse(url),
+            )
             ? Network.resolvedProxy(uri: Uri.parse(url))
             : '',
       );
@@ -290,7 +389,10 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     // Some APIs report errors as 4xx with a JSON body; those extensions opt in
     // to receiving the body instead of an exception.
     final allowErrorStatus = options['allowErrorStatus'] == true;
-    final timeoutMs = (options['timeoutMs'] as num?)?.toInt().clamp(1000, 120000);
+    final timeoutMs = (options['timeoutMs'] as num?)?.toInt().clamp(
+      1000,
+      120000,
+    );
 
     // Source sites throw transient 5xx and connection resets often enough that
     // a single failure would wrongly mark a working source as broken.
@@ -298,10 +400,12 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     var attempt = 0;
     while (true) {
       final cancel = timeoutMs == null ? null : CancelToken();
-      final timer = timeoutMs == null ? null : Timer(
-        Duration(milliseconds: timeoutMs),
-        () => cancel!.cancel('请求超时'),
-      );
+      final timer = timeoutMs == null
+          ? null
+          : Timer(
+              Duration(milliseconds: timeoutMs),
+              () => cancel!.cancel('请求超时'),
+            );
       try {
         response = await dio.request(
           url,
@@ -310,8 +414,12 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
             method: method,
             headers: headers,
             responseType: ResponseType.plain,
-            receiveTimeout: timeoutMs == null ? null : Duration(milliseconds: timeoutMs),
-            sendTimeout: timeoutMs == null ? null : Duration(milliseconds: timeoutMs),
+            receiveTimeout: timeoutMs == null
+                ? null
+                : Duration(milliseconds: timeoutMs),
+            sendTimeout: timeoutMs == null
+                ? null
+                : Duration(milliseconds: timeoutMs),
             validateStatus: allowErrorStatus
                 ? (s) => s != null && s < 600
                 : (s) => s != null && s < 400,
@@ -324,7 +432,8 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
         // 429 means we asked too fast, so back off much harder than for a
         // flaky 5xx and honour Retry-After when the server sends one.
         final rateLimited = status == 429;
-        final retryable = rateLimited ||
+        final retryable =
+            rateLimited ||
             status >= 500 ||
             e.type == DioExceptionType.connectionTimeout ||
             e.type == DioExceptionType.receiveTimeout ||
@@ -334,8 +443,9 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
           attempt++;
           var wait = Duration(milliseconds: 600 * attempt);
           if (rateLimited) {
-            final retryAfter =
-                int.tryParse(e.response?.headers.value('retry-after') ?? '');
+            final retryAfter = int.tryParse(
+              e.response?.headers.value('retry-after') ?? '',
+            );
             wait = retryAfter != null
                 ? Duration(seconds: retryAfter.clamp(1, 60))
                 : Duration(seconds: 2 << attempt); // 4s, 8s, 16s, 32s
@@ -357,12 +467,20 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     }
     final text = response.data.toString();
     final contentType = response.headers.value('content-type') ?? '';
+    dynamic body = text;
     if (contentType.contains('json')) {
       try {
-        return jsonDecode(text);
+        body = jsonDecode(text);
       } catch (_) {}
     }
-    return text;
+    if (options['responseMetadata'] == true) {
+      return {
+        'body': body,
+        'status': response.statusCode,
+        'headers': response.headers.map,
+      };
+    }
+    return body;
   }
 
   Future<dynamic> _handleQuerySelector(dynamic payload) async {
@@ -380,11 +498,15 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
     final doc = html_parser.parse(payload['content'].toString());
     final els = doc.querySelectorAll(payload['selector'].toString());
     return els
-        .map((el) => {
-              'text': el.text,
-              'content': el.outerHtml,
-              'attributes': el.attributes.map((k, v) => MapEntry(k.toString(), v)),
-            })
+        .map(
+          (el) => {
+            'text': el.text,
+            'content': el.outerHtml,
+            'attributes': el.attributes.map(
+              (k, v) => MapEntry(k.toString(), v),
+            ),
+          },
+        )
         .toList();
   }
 
@@ -396,8 +518,9 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
 
   Future<dynamic> _handleQueryXPath(dynamic payload) async {
     try {
-      final result = HtmlXPath.html(payload['content'].toString())
-          .queryXPath(payload['expression'].toString());
+      final result = HtmlXPath.html(
+        payload['content'].toString(),
+      ).queryXPath(payload['expression'].toString());
       final allText = <String>[];
       final allHtml = <String>[];
       if (result.attrs.isNotEmpty) {
@@ -439,8 +562,10 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
   Future<dynamic> _handleBase64Encode(dynamic payload) async =>
       base64Encode(utf8.encode(payload['text'].toString()));
 
-  Future<dynamic> _handleAesEcbDecrypt(dynamic payload) async =>
-      decryptAesEcb(payload['ciphertext'].toString(), payload['key'].toString());
+  Future<dynamic> _handleAesEcbDecrypt(dynamic payload) async => decryptAesEcb(
+    payload['ciphertext'].toString(),
+    payload['key'].toString(),
+  );
 
   Future<dynamic> _handleRegisterSetting(dynamic payload) async {
     final setting = payload['setting'] as Map? ?? {};
@@ -465,7 +590,11 @@ __ext.webSite = ${jsonEncode(meta.webSite)};
       Storage.extSetting(meta.package, payload['key'].toString());
 
   Future<dynamic> _handleSetSetting(dynamic payload) async {
-    await Storage.setExtSetting(meta.package, payload['key'].toString(), payload['value']);
+    await Storage.setExtSetting(
+      meta.package,
+      payload['key'].toString(),
+      payload['value'],
+    );
     return null;
   }
 }
