@@ -73,7 +73,7 @@ class Storage {
     if (_favorites.containsKey(item.key)) {
       await _favorites.delete(item.key);
     } else {
-      await _favorites.put(item.key, item.toJson());
+      await _favorites.put(classifyItem(item).key, classifyItem(item).toJson());
     }
   }
 
@@ -104,7 +104,7 @@ class Storage {
         url: item.url,
         cover: item.cover.isNotEmpty ? item.cover : previous?.cover ?? '',
         update: item.update.isNotEmpty ? item.update : previous?.update ?? '',
-      );
+      ).mergeClassification(classifyItem(item)).mergeClassification(previous);
 
   /// Remember a work even before reading, preserving any chapter and position.
   static Future<void> recordVisit(MediaItem item) {
@@ -151,6 +151,55 @@ class Storage {
       _settings.put(key, value);
 
   // ---- user-installed extensions ----
+  static Box get extensionsBox => _extensions;
+  static final _sourceRatings = <String, (String, bool)>{};
+
+  static bool? sourceNsfw(String package) {
+    final script = _extensions.get(package);
+    if (script is! String) return null;
+    final cached = _sourceRatings[package];
+    if (cached != null && identical(cached.$1, script)) return cached.$2;
+    final rating = ExtensionMeta.parse(script)?.nsfw ?? false;
+    _sourceRatings[package] = (script, rating);
+    return rating;
+  }
+
+  static MediaItem classifyItem(MediaItem item) {
+    final favorite = _favorites.get(item.key);
+    final local = _local.get(item.url);
+    return item
+        .mergeClassification(
+          favorite is Map ? MediaItem.fromJson(favorite) : null,
+        )
+        .mergeClassification(_historyRecord(item.key)?.item)
+        .mergeClassification(local is Map ? MediaItem.fromJson(local) : null)
+        .withClassification(sourceNsfw: sourceNsfw(item.package));
+  }
+
+  static Future<void> setContentRating(
+    MediaItem item,
+    ContentRating rating,
+  ) async {
+    final current = classifyItem(item);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final marked = current.withClassification(
+      rating: rating,
+      updatedAt: now > current.contentRatingUpdatedAt
+          ? now
+          : current.contentRatingUpdatedAt + 1,
+    );
+    if (_favorites.containsKey(item.key)) {
+      await _favorites.put(item.key, marked.toJson());
+    }
+    final record = _historyRecord(item.key);
+    if (record != null) {
+      await _history.put(item.key, record.copyWith(item: marked).toJson());
+    }
+    if (item.package == 'local' && _local.containsKey(item.url)) {
+      await _local.put(item.url, marked.toJson());
+    }
+  }
+
   static Map<String, String> installedScripts() => Map.fromEntries(
     _extensions.toMap().entries.map(
       (e) => MapEntry(e.key.toString(), e.value.toString()),
@@ -160,8 +209,22 @@ class Storage {
   static Future<void> installScript(String package, String script) =>
       _extensions.put(package, script);
 
-  static Future<void> uninstallScript(String package) =>
-      _extensions.delete(package);
+  static Future<void> uninstallScript(String package) async {
+    // Keep the inherited label after a source is removed, including legacy books.
+    for (final item in favorites().where((item) => item.package == package)) {
+      await _favorites.put(item.key, classifyItem(item).toJson());
+    }
+    for (final record in history().where(
+      (record) => record.item?.package == package,
+    )) {
+      await _history.put(
+        record.key,
+        record.copyWith(item: classifyItem(record.item!)).toJson(),
+      );
+    }
+    await _extensions.delete(package);
+    _sourceRatings.remove(package);
+  }
 
   static bool isInstalledByUser(String package) =>
       _extensions.containsKey(package);

@@ -33,8 +33,14 @@ class LibraryBackup {
        readerSettings = ReadingPreferences.decode(readerSettings);
 
   factory LibraryBackup.capture() {
-    final favorites = Storage.favorites();
-    final history = Storage.history();
+    final favorites = Storage.favorites().map(Storage.classifyItem).toList();
+    final history = Storage.history()
+        .map(
+          (record) => record.item == null
+              ? record
+              : record.copyWith(item: Storage.classifyItem(record.item!)),
+        )
+        .toList();
     return LibraryBackup._(
       exportedAt: DateTime.now().toUtc(),
       favorites: favorites.where((item) => item.package != 'local'),
@@ -442,7 +448,7 @@ class LibraryBackup {
         update: preferred.update.isNotEmpty
             ? preferred.update
             : fallback.update,
-      );
+      ).mergeClassification(preferred).mergeClassification(fallback);
 
   static MediaItem _item(dynamic raw) {
     final json = _map(raw, '作品');
@@ -454,6 +460,13 @@ class LibraryBackup {
     if (!MediaType.values.any((value) => value.name == type)) {
       throw const FormatException('作品类型无效。');
     }
+    if ((json['sourceNsfw'] != null && json['sourceNsfw'] is! bool) ||
+        (json['contentRating'] != null &&
+            !ContentRating.values.any(
+              (r) => r.name == json['contentRating'],
+            ))) {
+      throw const FormatException('作品的内容分级无效。');
+    }
     return MediaItem(
       package: package,
       type: MediaType.fromString(type),
@@ -461,6 +474,16 @@ class LibraryBackup {
       url: _string(json, 'url', requiredValue: true),
       cover: _string(json, 'cover', optional: true),
       update: _string(json, 'update', optional: true),
+      sourceNsfw: json['sourceNsfw'],
+      contentRating: ContentRating.values.firstWhere(
+        (r) => r.name == json['contentRating'],
+        orElse: () => ContentRating.source,
+      ),
+      contentRatingUpdatedAt: _integer(
+        json,
+        'contentRatingUpdatedAt',
+        optional: true,
+      ),
     );
   }
 

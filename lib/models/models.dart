@@ -94,13 +94,15 @@ class ExtensionMeta {
       webSite: fields['webSite'] ?? '',
       type: MediaType.fromString(fields['type']!),
       icon: fields['icon'] ?? '',
-      nsfw: (fields['nsfw'] ?? 'false') == 'true',
+      nsfw: (fields['nsfw'] ?? 'false').toLowerCase() == 'true',
       commentScope: CommentScope.parse(fields['comments']),
       supportsQrLogin: fields['login'] == 'qr',
       network: fields['network'] ?? 'auto',
     );
   }
 }
+
+enum ContentRating { source, sfw, nsfw }
 
 /// One item in a listing (latest / search results) or in the library.
 class MediaItem {
@@ -110,6 +112,9 @@ class MediaItem {
   final String url;
   final String cover;
   final String update;
+  final bool? sourceNsfw;
+  final ContentRating contentRating;
+  final int contentRatingUpdatedAt;
 
   const MediaItem({
     required this.package,
@@ -118,36 +123,79 @@ class MediaItem {
     required this.url,
     this.cover = '',
     this.update = '',
+    this.sourceNsfw,
+    this.contentRating = ContentRating.source,
+    this.contentRatingUpdatedAt = 0,
   });
 
   String get key => '$package|$url';
 
   Map<String, dynamic> toJson() => {
-        'package': package,
-        'type': type.name,
-        'title': title,
-        'url': url,
-        'cover': cover,
-        'update': update,
-      };
+    'package': package,
+    'type': type.name,
+    'title': title,
+    'url': url,
+    'cover': cover,
+    'update': update,
+    if (sourceNsfw != null) 'sourceNsfw': sourceNsfw,
+    'contentRating': contentRating.name,
+    'contentRatingUpdatedAt': contentRatingUpdatedAt,
+  };
 
   factory MediaItem.fromJson(Map json) => MediaItem(
-        package: json['package'] ?? '',
-        type: MediaType.fromString(json['type'] ?? 'manga'),
-        title: json['title'] ?? '',
-        url: json['url'] ?? '',
-        cover: json['cover'] ?? '',
-        update: json['update'] ?? '',
-      );
+    package: json['package'] ?? '',
+    type: MediaType.fromString(json['type'] ?? 'manga'),
+    title: json['title'] ?? '',
+    url: json['url'] ?? '',
+    cover: json['cover'] ?? '',
+    update: json['update'] ?? '',
+    sourceNsfw: json['sourceNsfw'] is bool ? json['sourceNsfw'] : null,
+    contentRating: ContentRating.values.firstWhere(
+      (rating) => rating.name == json['contentRating'],
+      orElse: () => ContentRating.source,
+    ),
+    contentRatingUpdatedAt:
+        (json['contentRatingUpdatedAt'] as num?)?.toInt() ?? 0,
+  );
 
   factory MediaItem.fromExtension(Map json, ExtensionMeta meta) => MediaItem(
-        package: meta.package,
-        type: meta.type,
-        title: (json['title'] ?? '').toString(),
-        url: (json['url'] ?? '').toString(),
-        cover: (json['cover'] ?? '').toString(),
-        update: (json['update'] ?? '').toString(),
-      );
+    package: meta.package,
+    type: meta.type,
+    title: (json['title'] ?? '').toString(),
+    url: (json['url'] ?? '').toString(),
+    cover: (json['cover'] ?? '').toString(),
+    update: (json['update'] ?? '').toString(),
+    sourceNsfw: meta.nsfw,
+  );
+
+  MediaItem withClassification({
+    bool? sourceNsfw,
+    ContentRating? rating,
+    int? updatedAt,
+  }) => MediaItem(
+    package: package,
+    type: type,
+    title: title,
+    url: url,
+    cover: cover,
+    update: update,
+    sourceNsfw: sourceNsfw ?? this.sourceNsfw,
+    contentRating: rating ?? contentRating,
+    contentRatingUpdatedAt: updatedAt ?? contentRatingUpdatedAt,
+  );
+
+  /// Refreshing titles or reading an old page must not undo a user's label.
+  MediaItem mergeClassification(MediaItem? other) {
+    if (other == null || other.key != key) return this;
+    final latest = other.contentRatingUpdatedAt > contentRatingUpdatedAt
+        ? other
+        : this;
+    return withClassification(
+      sourceNsfw: sourceNsfw ?? other.sourceNsfw,
+      rating: latest.contentRating,
+      updatedAt: latest.contentRatingUpdatedAt,
+    );
+  }
 }
 
 /// A browse channel offered by a source: a category, ranking or sort order.
@@ -297,10 +345,10 @@ class MangaWatch {
   const MangaWatch({required this.urls, this.headers = const {}, this.netMode});
 
   factory MangaWatch.fromJson(Map json) => MangaWatch(
-        urls: (json['urls'] as List? ?? []).map((e) => e.toString()).toList(),
-        headers: _headers(json),
-        netMode: json['netMode']?.toString(),
-      );
+    urls: (json['urls'] as List? ?? []).map((e) => e.toString()).toList(),
+    headers: _headers(json),
+    netMode: json['netMode']?.toString(),
+  );
 }
 
 /// One piece of a novel chapter: a paragraph or an inline illustration.
@@ -464,8 +512,10 @@ class AnimeQuality {
 String? _audioUrl(Map json) {
   final raw = json['audioUrl'];
   if (raw == null || raw == '') return null;
-  if (raw is! String || raw.length > 8192 ||
-      RegExp(r'[\r\n]').hasMatch(raw) || !AnimeQuality.validUrl(raw)) {
+  if (raw is! String ||
+      raw.length > 8192 ||
+      RegExp(r'[\r\n]').hasMatch(raw) ||
+      !AnimeQuality.validUrl(raw)) {
     throw const FormatException('音轨地址格式不正确');
   }
   return raw;

@@ -40,7 +40,7 @@ class _DetailPageState extends State<DetailPage> {
         ? _detail!.cover
         : widget.item.cover,
     update: widget.item.update,
-  );
+  ).mergeClassification(Storage.classifyItem(widget.item));
 
   @override
   void initState() {

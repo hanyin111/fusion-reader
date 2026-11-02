@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../services/extension_manager.dart';
+import '../services/content_filter.dart';
+import '../widgets/content_mode_button.dart';
 import '../services/extension_runtime.dart';
 import '../widgets/media_card.dart';
 import 'extension_repository_page.dart';
@@ -30,13 +32,17 @@ class _ExplorePageState extends State<ExplorePage>
     return Scaffold(
       appBar: AppBar(
         title: const Text('发现'),
+        actions: const [ContentModeButton()],
         bottom: TabBar(
           controller: _tab,
           tabs: [for (final t in MediaType.values) Tab(text: t.label)],
         ),
       ),
       body: ListenableBuilder(
-        listenable: ExtensionManager.instance,
+        listenable: Listenable.merge([
+          ExtensionManager.instance,
+          ContentFilter.changes,
+        ]),
         builder: (context, _) => TabBarView(
           controller: _tab,
           children: [for (final t in MediaType.values) ExploreTab(type: t)],
@@ -76,8 +82,10 @@ class _ExploreTabState extends State<ExploreTab>
   @override
   bool get wantKeepAlive => true;
 
-  List<ExtensionService> get _sources =>
-      ExtensionManager.instance.byType(widget.type);
+  List<ExtensionService> get _sources => ExtensionManager.instance
+      .byType(widget.type)
+      .where((source) => ContentFilter.allowsSource(source.meta.nsfw))
+      .toList();
 
   ExtensionService? get _current {
     final sources = _sources;
@@ -181,6 +189,9 @@ class _ExploreTabState extends State<ExploreTab>
     final sources = _sources;
     if (sources.isEmpty) {
       _observedService = null;
+      _listGeneration++;
+      _items.clear();
+      _loading = false;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -204,6 +215,8 @@ class _ExploreTabState extends State<ExploreTab>
     final current = _current!;
     if (!identical(_observedService, current) ||
         _observedLoginRevision != current.loginRevision) {
+      _listGeneration++;
+      _items.clear();
       _observedService = current;
       _observedLoginRevision = current.loginRevision;
       WidgetsBinding.instance.addPostFrameCallback((_) {

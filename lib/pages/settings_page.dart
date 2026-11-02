@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/offline_cache.dart';
+import '../services/content_filter.dart';
 import '../services/account_service.dart';
 import 'account_page.dart';
 import 'app_update_page.dart';
@@ -31,6 +32,24 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Text('内容显示', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          Card(
+            child: ListenableBuilder(
+              listenable: ContentFilter.changes,
+              builder: (context, _) => SwitchListTile(
+                title: const Text('显示 NSFW 内容'),
+                subtitle: Text(
+                  ContentFilter.showNsfw
+                      ? '显示全部内容；书架单项分级可在管理菜单修改'
+                      : 'SFW 模式：隐藏 NSFW 插件和作品，保留所有数据',
+                ),
+                value: ContentFilter.showNsfw,
+                onChanged: ContentFilter.setShowNsfw,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
           Text('账号', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
           ListenableBuilder(

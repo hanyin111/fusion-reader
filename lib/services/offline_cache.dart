@@ -14,6 +14,7 @@ import 'image_loader.dart';
 import 'source_image_codec.dart';
 import 'sources.dart';
 import 'separate_media.dart';
+import 'storage.dart';
 
 /// Progress of one in-flight download.
 class DownloadProgress {
@@ -240,6 +241,7 @@ class OfflineCache extends ChangeNotifier {
       }
 
       if (cancelToken.isCancelled) throw cancelToken.cancelError!;
+      final classified = Storage.classifyItem(item);
       await _manifests.put(key, {
         'key': key,
         'package': item.package,
@@ -247,6 +249,9 @@ class OfflineCache extends ChangeNotifier {
         'itemTitle': item.title,
         'itemUrl': item.url,
         'itemCover': item.cover,
+        'sourceNsfw': classified.sourceNsfw,
+        'contentRating': classified.contentRating.name,
+        'contentRatingUpdatedAt': classified.contentRatingUpdatedAt,
         'type': item.type.name,
         'episodeUrl': episode.url,
         'episodeName': episode.name,

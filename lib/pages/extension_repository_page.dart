@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import '../services/content_filter.dart';
 
 import '../models/models.dart';
 import '../services/extension_manager.dart';
@@ -89,7 +89,9 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
                 return error.message;
               }
             },
-            decoration: const InputDecoration(helperText: '填写社区平台提供的 HTTPS 索引链接'),
+            decoration: const InputDecoration(
+              helperText: '填写社区平台提供的 HTTPS 索引链接',
+            ),
           ),
         ),
         actions: [
@@ -119,11 +121,12 @@ class _ExtensionRepositoryPageState extends State<ExtensionRepositoryPage> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: manager,
+    listenable: Listenable.merge([manager, ContentFilter.changes]),
     builder: (context, _) {
       final entries = (manager.catalog?.extensions ?? <RepositoryExtension>[])
           .where(
             (entry) =>
+                ContentFilter.allowsSource(entry.nsfw) &&
                 (type == null || entry.type == type) &&
                 '${entry.name} ${entry.package} ${entry.lang}'
                     .toLowerCase()

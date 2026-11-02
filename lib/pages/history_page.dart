@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/models.dart';
 import '../services/extension_manager.dart';
 import '../services/local_library.dart';
 import '../services/sources.dart';
 import '../services/storage.dart';
+import '../services/content_filter.dart';
 import '../widgets/media_card.dart' show typeColor;
 import '../widgets/source_image.dart';
 import 'detail_page.dart';
@@ -99,10 +99,13 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder(
-    valueListenable: Storage.historyBox.listenable(),
-    builder: (context, _, _) {
-      final all = Storage.history();
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: ContentFilter.changes,
+    builder: (context, _) {
+      final all = Storage.history().where((record) {
+        final item = _itemOf(record);
+        return item != null && ContentFilter.allowsItem(item);
+      }).toList();
       final records = _filter == null
           ? all
           : all.where((record) => _itemOf(record)?.type == _filter).toList();

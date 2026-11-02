@@ -35,9 +35,9 @@ class MediaCard extends StatelessWidget {
     final sourceName = Sources.displayName(item.package);
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => DetailPage(item: item)),
-      ),
+      onTap: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => DetailPage(item: item))),
       onLongPress: onLongPress,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,7 +53,9 @@ class MediaCard extends StatelessWidget {
                     package: item.package,
                     fit: BoxFit.cover,
                     error: Container(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
                       child: const Icon(Icons.image_not_supported_outlined),
                     ),
                   ),
@@ -63,15 +65,33 @@ class MediaCard extends StatelessWidget {
                     top: 6,
                     left: 6,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: typeColor(item.type).withValues(alpha: 0.9),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         item.type.label,
-                        style: const TextStyle(color: Colors.white, fontSize: 10),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                        ),
                       ),
+                    ),
+                  ),
+                if (onLongPress != null)
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: IconButton.filledTonal(
+                      tooltip: '书架管理与内容分级',
+                      visualDensity: VisualDensity.compact,
+                      iconSize: 18,
+                      onPressed: onLongPress,
+                      icon: const Icon(Icons.more_horiz),
                     ),
                   ),
                 Positioned(
@@ -79,16 +99,24 @@ class MediaCard extends StatelessWidget {
                   left: 0,
                   right: 0,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black.withValues(alpha: 0.55),
-                      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(10)),
+                      borderRadius: const BorderRadius.vertical(
+                        bottom: Radius.circular(10),
+                      ),
                     ),
                     child: Text(
                       sourceName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white70, fontSize: 10),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10,
+                      ),
                     ),
                   ),
                 ),
@@ -108,8 +136,8 @@ class MediaCard extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
         ],
       ),

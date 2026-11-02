@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-
+import '../services/content_filter.dart';
+import '../widgets/content_mode_button.dart';
 
 import '../models/models.dart';
 import '../services/extension_manager.dart';
@@ -26,6 +27,7 @@ class ExtensionsPage extends StatelessWidget {
           ),
         ),
         actions: [
+          const ContentModeButton(),
           IconButton(
             tooltip: '插件平台',
             icon: const Icon(Icons.extension_outlined),
@@ -204,9 +206,11 @@ class ExtensionsPage extends StatelessWidget {
         ],
       ),
       body: ListenableBuilder(
-        listenable: manager,
+        listenable: Listenable.merge([manager, ContentFilter.changes]),
         builder: (context, _) {
-          final list = manager.all;
+          final list = manager.all
+              .where((source) => ContentFilter.allowsSource(source.meta.nsfw))
+              .toList();
           return ListView.builder(
             itemCount: list.length + 1,
             itemBuilder: (context, i) {

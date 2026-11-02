@@ -5,6 +5,9 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/models.dart';
 import '../services/local_library.dart';
 import '../services/storage.dart';
+import '../services/content_filter.dart';
+import '../widgets/content_mode_button.dart';
+import '../widgets/content_rating_dialog.dart';
 import '../widgets/media_card.dart';
 import 'history_page.dart';
 
@@ -85,13 +88,15 @@ class _LibraryPageState extends State<LibraryPage> {
       // Imported items go straight onto the shelf, like a favourited series.
       if (!Storage.isFavorite(item.key)) await Storage.toggleFavorite(item);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('已导入: ${item.title}')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已导入: ${item.title}')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('导入失败: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('导入失败: $e')));
       }
     }
   }
@@ -102,12 +107,13 @@ class _LibraryPageState extends State<LibraryPage> {
       appBar: AppBar(
         title: const Text('书架'),
         actions: [
+          const ContentModeButton(),
           IconButton(
             tooltip: '历史记录',
             icon: const Icon(Icons.history),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const HistoryPage()),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const HistoryPage())),
           ),
           PopupMenuButton<MediaType>(
             tooltip: '导入本地内容',
@@ -117,11 +123,13 @@ class _LibraryPageState extends State<LibraryPage> {
               for (final t in MediaType.values)
                 PopupMenuItem(
                   value: t,
-                  child: Row(children: [
-                    Icon(_importIcon(t), size: 18, color: typeColor(t)),
-                    const SizedBox(width: 8),
-                    Text('导入本地${t.label}'),
-                  ]),
+                  child: Row(
+                    children: [
+                      Icon(_importIcon(t), size: 18, color: typeColor(t)),
+                      const SizedBox(width: 8),
+                      Text('导入本地${t.label}'),
+                    ],
+                  ),
                 ),
             ],
           ),
@@ -131,9 +139,12 @@ class _LibraryPageState extends State<LibraryPage> {
         listenable: Listenable.merge([
           Storage.favoritesBox.listenable(),
           Storage.historyBox.listenable(),
+          ContentFilter.changes,
         ]),
         builder: (context, _) {
-          var items = Storage.favorites();
+          var items = Storage.favorites()
+              .where(ContentFilter.allowsItem)
+              .toList();
           // Most recently read first.
           items.sort((a, b) {
             final ha = Storage.historyOf(a.key)?.timestamp ?? 0;
@@ -171,39 +182,50 @@ class _LibraryPageState extends State<LibraryPage> {
                 child: items.isEmpty
                     ? const Center(
                         child: Text(
-                            '书架是空的\n去「发现」页收藏在线内容，\n或用右上角 + 导入本地文件',
-                            textAlign: TextAlign.center),
+                          '书架是空的\n去「发现」页收藏在线内容，\n或用右上角 + 导入本地文件',
+                          textAlign: TextAlign.center,
+                        ),
                       )
                     : GridView.builder(
                         padding: const EdgeInsets.all(12),
-                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 130,
-                          childAspectRatio: 0.55,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
-                        ),
+                        gridDelegate:
+                            const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 130,
+                              childAspectRatio: 0.55,
+                              crossAxisSpacing: 10,
+                              mainAxisSpacing: 10,
+                            ),
                         itemCount: items.length,
                         itemBuilder: (context, i) {
                           final item = items[i];
                           final history = Storage.historyOf(item.key);
                           return MediaCard(
                             item: item,
-                            subtitle: history != null ? '读到: ${history.episodeName}' : null,
+                            subtitle: history != null
+                                ? '读到: ${history.episodeName}'
+                                : null,
                             onLongPress: () async {
+                              final removeAction =
+                                  await showContentRatingActions(context, item);
+                              if (!removeAction || !context.mounted) return;
                               final remove = await showDialog<bool>(
                                 context: context,
                                 builder: (c) => AlertDialog(
                                   title: Text(item.title),
-                                  content: Text(LocalLibrary.isLocal(item.package)
-                                      ? '从书架移除？（不会删除本地文件）'
-                                      : '从书架移除？'),
+                                  content: Text(
+                                    LocalLibrary.isLocal(item.package)
+                                        ? '从书架移除？（不会删除本地文件）'
+                                        : '从书架移除？',
+                                  ),
                                   actions: [
                                     TextButton(
-                                        onPressed: () => Navigator.pop(c, false),
-                                        child: const Text('取消')),
+                                      onPressed: () => Navigator.pop(c, false),
+                                      child: const Text('取消'),
+                                    ),
                                     FilledButton(
-                                        onPressed: () => Navigator.pop(c, true),
-                                        child: const Text('移除')),
+                                      onPressed: () => Navigator.pop(c, true),
+                                      child: const Text('移除'),
+                                    ),
                                   ],
                                 ),
                               );

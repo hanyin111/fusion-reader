@@ -3,10 +3,26 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/cache_download_queue.dart';
 import '../services/offline_cache.dart';
+import '../services/content_filter.dart';
 import 'detail_page.dart';
 
 class CacheListPage extends StatelessWidget {
   const CacheListPage({super.key});
+
+  MediaItem _cachedItem(Map entry) => MediaItem(
+    package: entry['package'].toString(),
+    type: MediaType.fromString(entry['type'].toString()),
+    title: (entry['itemTitle'] ?? '已缓存作品').toString(),
+    url: (entry['itemUrl'] ?? '').toString(),
+    cover: (entry['itemCover'] ?? '').toString(),
+    sourceNsfw: entry['sourceNsfw'] is bool ? entry['sourceNsfw'] : null,
+    contentRating: ContentRating.values.firstWhere(
+      (r) => r.name == entry['contentRating'],
+      orElse: () => ContentRating.source,
+    ),
+    contentRatingUpdatedAt:
+        (entry['contentRatingUpdatedAt'] as num?)?.toInt() ?? 0,
+  );
 
   String _state(CacheTaskState state) => switch (state) {
     CacheTaskState.queued => '等待缓存',
@@ -38,7 +54,9 @@ class CacheListPage extends StatelessWidget {
 
   Widget _tasks(BuildContext context) {
     final cache = OfflineCache.instance;
-    final tasks = cache.queue.tasks;
+    final tasks = cache.queue.tasks
+        .where((task) => ContentFilter.allowsItem(task.item))
+        .toList();
     if (tasks.isEmpty) return const Center(child: Text('暂无缓存任务'));
     return ListView.builder(
       padding: const EdgeInsets.all(12),
@@ -109,6 +127,8 @@ class CacheListPage extends StatelessWidget {
   Widget _cached(BuildContext context) {
     final works = <String, List<Map>>{};
     for (final entry in OfflineCache.allEntries()) {
+      final item = _cachedItem(entry);
+      if (!ContentFilter.allowsItem(item)) continue;
       works.putIfAbsent(entry['itemKey'].toString(), () => []).add(entry);
     }
     if (works.isEmpty) return const Center(child: Text('暂无已缓存内容'));
@@ -119,13 +139,7 @@ class CacheListPage extends StatelessWidget {
       itemBuilder: (context, index) {
         final entries = groups[index];
         final first = entries.first;
-        final item = MediaItem(
-          package: first['package'].toString(),
-          type: MediaType.fromString(first['type'].toString()),
-          title: (first['itemTitle'] ?? '已缓存作品').toString(),
-          url: (first['itemUrl'] ?? '').toString(),
-          cover: (first['itemCover'] ?? '').toString(),
-        );
+        final item = _cachedItem(first);
         final bytes = entries.fold<int>(
           0,
           (sum, entry) => sum + ((entry['bytes'] as num?)?.toInt() ?? 0),
@@ -195,7 +209,10 @@ class CacheListPage extends StatelessWidget {
           ),
           Expanded(
             child: ListenableBuilder(
-              listenable: OfflineCache.instance,
+              listenable: Listenable.merge([
+                OfflineCache.instance,
+                ContentFilter.changes,
+              ]),
               builder: (context, _) =>
                   TabBarView(children: [_tasks(context), _cached(context)]),
             ),

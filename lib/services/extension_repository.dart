@@ -39,6 +39,8 @@ class RepositoryExtension {
   final MediaType type;
   final Uri url;
   final int size;
+  final bool nsfw;
+  final bool hasRating;
   const RepositoryExtension({
     required this.package,
     required this.name,
@@ -49,6 +51,8 @@ class RepositoryExtension {
     required this.checksum,
     required this.size,
     required this.minAppVersion,
+    this.nsfw = false,
+    this.hasRating = false,
   });
 
   factory RepositoryExtension.parse(Object? value, Uri index) {
@@ -72,6 +76,7 @@ class RepositoryExtension {
         !_version(minimum) ||
         !RegExp(r'^[a-f0-9]{64}$').hasMatch(checksum) ||
         !['manga', 'novel', 'anime'].contains(kind) ||
+        (value.containsKey('nsfw') && value['nsfw'] is! bool) ||
         size is! int ||
         size <= 0 ||
         size > ExtensionRepository.maxScriptBytes) {
@@ -88,6 +93,8 @@ class RepositoryExtension {
       checksum: checksum,
       size: size,
       minAppVersion: minimum,
+      nsfw: value['nsfw'] == true,
+      hasRating: value.containsKey('nsfw'),
     );
   }
 
@@ -118,7 +125,8 @@ class RepositoryExtension {
         meta.package != package ||
         meta.version != version ||
         meta.name != name ||
-        meta.type != type) {
+        meta.type != type ||
+        (hasRating && meta.nsfw != nsfw)) {
       throw const FormatException('插件脚本与仓库信息不一致，已取消安装。');
     }
     return script;
