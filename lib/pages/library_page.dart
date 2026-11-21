@@ -138,11 +138,16 @@ class _LibraryPageState extends State<LibraryPage> {
       body: ListenableBuilder(
         listenable: Listenable.merge([
           Storage.favoritesBox.listenable(),
+          Storage.localBox.listenable(),
           Storage.historyBox.listenable(),
           ContentFilter.changes,
         ]),
         builder: (context, _) {
-          var items = Storage.favorites()
+          final shelf = {
+            for (final item in [...LocalLibrary.all(), ...Storage.favorites()])
+              item.key: item,
+          };
+          var items = shelf.values
               .where(ContentFilter.allowsItem)
               .toList();
           // Most recently read first.
@@ -230,12 +235,11 @@ class _LibraryPageState extends State<LibraryPage> {
                                 ),
                               );
                               if (remove == true) {
-                                await Storage.toggleFavorite(item);
-                                // Imported entries also leave the local index;
-                                // the file itself is never touched.
+                                // Only remove the shelf record for local files.
                                 if (LocalLibrary.isLocal(item.package)) {
                                   await LocalLibrary.remove(item.url);
                                 }
+                                await Storage.removeFavorite(item.key);
                               }
                             },
                           );

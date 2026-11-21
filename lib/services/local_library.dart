@@ -46,6 +46,7 @@ class LocalLibrary {
       url: path,
       cover: cover,
     );
+    if (type == MediaType.manga) await _mangaDetail(item);
     await Storage.addLocalItem(item);
     return item;
   }
@@ -80,7 +81,7 @@ class LocalLibrary {
       // A folder of chapter folders, or a single chapter of loose images.
       final subChapters = children
           .where((e) =>
-              e is Directory ||
+              (e is Directory && _imagesIn(e).isNotEmpty) ||
               (e is File && _isArchive(e.path)))
           .toList();
       if (subChapters.isNotEmpty) {

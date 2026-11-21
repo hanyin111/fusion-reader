@@ -69,9 +69,11 @@ class Storage {
 
   static bool isFavorite(String key) => _favorites.containsKey(key);
 
+  static Future<void> removeFavorite(String key) => _favorites.delete(key);
+
   static Future<void> toggleFavorite(MediaItem item) async {
     if (_favorites.containsKey(item.key)) {
-      await _favorites.delete(item.key);
+      await removeFavorite(item.key);
     } else {
       await _favorites.put(classifyItem(item).key, classifyItem(item).toJson());
     }

@@ -262,6 +262,7 @@ class _DetailPageState extends State<DetailPage> {
     final item = widget.item;
     final detail = _detail;
     final sourceName = Sources.displayName(item.package);
+    final local = LocalLibrary.isLocal(item.package);
 
     return Scaffold(
       appBar: AppBar(
@@ -272,7 +273,9 @@ class _DetailPageState extends State<DetailPage> {
             builder: (context, box, _) {
               final fav = Storage.isFavorite(item.key);
               return IconButton(
-                tooltip: fav ? '从书架移除' : '加入书架',
+                tooltip: local
+                    ? (fav ? '取消收藏' : '收藏')
+                    : (fav ? '从书架移除' : '加入书架'),
                 icon: Icon(
                   fav ? Icons.favorite : Icons.favorite_border,
                   color: fav ? Colors.redAccent : null,
