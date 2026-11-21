@@ -9,8 +9,12 @@ on:
       platform:
         description: 'Platforms to build'
         type: choice
-        options: [all, mobile, android]
+        options: [all, mobile, android, linux]
         default: all
+      linux_release_tag:
+        description: 'Existing version tag for a Linux-only release build'
+        type: string
+        required: false
   push:
     branches: [main]
     tags: ['v*']
@@ -28,6 +32,7 @@ env:
 
 jobs:
   android:
+    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'linux'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,10 +102,20 @@ jobs:
         run: gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
 
   linux:
-    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all'
-    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'linux'
+    # The bundled secure-storage JSON header is incompatible with the newer compiler's warnings-as-errors.
+    runs-on: ubuntu-24.04
+    env:
+      LINUX_RELEASE_TAG: ${{ (inputs.platform == 'linux' && inputs.linux_release_tag) || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ (inputs.platform == 'linux' && inputs.linux_release_tag && format('refs/tags/{0}', inputs.linux_release_tag)) || github.ref }}
+      - name: Verify Linux release version
+        if: env.LINUX_RELEASE_TAG != ''
+        run: |
+          VERSION=$(sed -n 's/^version: *//p' pubspec.yaml | cut -d+ -f1 | tr -d ' \r')
+          test "$LINUX_RELEASE_TAG" = "v$VERSION"
       - name: Install Linux build deps
         run: |
           sudo apt-get update
@@ -119,13 +134,13 @@ jobs:
           name: linux-x64
           path: FusionReader-linux-x64.tar.gz
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: env.LINUX_RELEASE_TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$GITHUB_REF_NAME" FusionReader-linux-x64.tar.gz --clobber
+        run: gh release upload "$LINUX_RELEASE_TAG" FusionReader-linux-x64.tar.gz --clobber
 
   ios:
-    if: github.event_name != 'workflow_dispatch' || inputs.platform != 'android'
+    if: github.event_name != 'workflow_dispatch' || inputs.platform == 'all' || inputs.platform == 'mobile'
     uses: ./.github/workflows/ios.yml
     secrets: inherit
     with:
