@@ -1,7 +1,9 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fusion_reader/models/models.dart';
+import 'package:fusion_reader/pages/history_page.dart';
 import 'package:fusion_reader/services/storage.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -147,4 +149,14 @@ void main() {
       expect(Storage.history(), hasLength(2));
     },
   );
+
+  testWidgets('history displays records without work metadata', (tester) async {
+    await tester.runAsync(
+      () => Storage.saveHistory(progress(novel, 123, metadata: false)),
+    );
+    await tester.pumpWidget(const MaterialApp(home: HistoryPage()));
+    expect(find.text('旧阅读记录'), findsOneWidget);
+    expect(find.text('读到：第二章'), findsOneWidget);
+    expect(find.byTooltip('删除记录'), findsOneWidget);
+  });
 }

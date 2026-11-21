@@ -104,7 +104,8 @@ class _HistoryPageState extends State<HistoryPage> {
     builder: (context, _) {
       final all = Storage.history().where((record) {
         final item = _itemOf(record);
-        return item != null && ContentFilter.allowsItem(item);
+        // A record without metadata can still be displayed as a generic row.
+        return item == null || ContentFilter.allowsItem(item);
       }).toList();
       final records = _filter == null
           ? all
